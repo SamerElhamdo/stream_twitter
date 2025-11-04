@@ -240,11 +240,12 @@
     
     <label style="margin-top: 20px;">📋 FFmpeg Command (للنسخ والتجريب اليدوي)</label>
     <div style="position: relative;">
-      <textarea id="ffmpegCommand" rows="4" readonly style="font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; background: #0a0a0a; color: #0a84ff; cursor: text; padding-right: 80px;" onclick="this.select();"></textarea>
+      <textarea id="ffmpegCommand" rows="4" readonly style="font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; background: #0a0a0a; color: #0a84ff; cursor: text; padding-right: 160px;" onclick="this.select();"></textarea>
+      <button onclick="generateFFmpegCommand()" style="position: absolute; top: 8px; right: 8px; padding: 6px 12px; font-size: 12px; background: #34c759; color: white; border: none; border-radius: 4px; cursor: pointer; z-index: 10; margin-right: 70px;" title="إعادة توليد الأمر">🔄 توليد</button>
       <button onclick="copyFFmpegCommand(event)" style="position: absolute; top: 8px; right: 8px; padding: 6px 12px; font-size: 12px; background: #0a84ff; color: white; border: none; border-radius: 4px; cursor: pointer; z-index: 10;">📋 نسخ</button>
     </div>
     <small style="color: #666; display: block; margin-top: 4px;">
-      انقر على الحقل لاختيار النص بالكامل، أو استخدم زر النسخ | يتم التحديث تلقائياً عند تغيير الحقول
+      انقر على الحقل لاختيار النص بالكامل، أو استخدم زر النسخ | يتم التحديث تلقائياً عند تغيير الحقول | استخدم زر التوليد لإعادة إنشاء الأمر
     </small>
   </div>
 
@@ -996,8 +997,8 @@ function generateFFmpegCommand() {
     return;
   }
   
-  // بناء الأمر الأساسي
-  let command = 'ffmpeg -re -fflags +genpts -err_detect ignore_err -i "' + hls + '"';
+  // بناء الأمر الأساسي (بسيط بدون flags إضافية)
+  let command = 'ffmpeg -re -i "' + hls + '"';
   
   // إضافة image إذا كان موجود
   if (image && image !== '') {
@@ -1041,8 +1042,8 @@ function generateFFmpegCommand() {
   // الصوت دائماً copy
   command += ' -c:a copy';
   
-  // Output format
-  command += ' -f flv -flvflags no_duration_filesize -avoid_negative_ts make_zero "' + rtmp + '"';
+  // Output format (بسيط بدون flags إضافية)
+  command += ' -f flv "' + rtmp + '"';
   
   document.getElementById('ffmpegCommand').value = command;
 }
