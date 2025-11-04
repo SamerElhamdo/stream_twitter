@@ -190,69 +190,57 @@ class StreamManager:
                 f"FFmpeg binary not found at {config.FFMPEG_BIN}"
             )
         
-        # Check video and audio codecs before building args
-        video_codec = self._check_video_codec(hls)
-        audio_codec = self._check_audio_codec(hls)
-        
-        # Base args with improved HLS/stream stability
+        # Base args: simple like your old working command
         args = [
             config.FFMPEG_BIN,
             "-re",  # Read input at native frame rate
-            "-fflags", "+genpts",  # Generate presentation timestamps
-            "-err_detect", "ignore_err",  # Ignore errors and continue
             "-i", hls
         ]
         
         # Add extra args if provided (user-defined filters, overlays, etc.)
         if extra_args:
             args += list(map(str, extra_args))
-        
-        # Determine if video re-encoding is needed
-        needs_video_reencode = self._should_reencode(extra_args, video_codec)
-        
-        if needs_video_reencode:
-            # Video re-encoding with optimized settings
-            bitrate_value = config.VIDEO_BITRATE.replace("k", "")
-            try:
-                bitrate_int = int(bitrate_value)
-                bufsize = bitrate_int * 2  # Buffer size = 2x bitrate
-            except ValueError:
-                bufsize = 4000  # Default fallback
+            # If extra_args contain filters, we need to re-encode
+            args_str = " ".join(map(str, extra_args)).lower()
+            has_filters = any(keyword in args_str for keyword in [
+                "-filter_complex", "-vf", "drawtext", 
+                "overlay", "format=", "scale", "crop"
+            ])
             
-            args += [
-                "-c:v", config.VIDEO_CODEC,
-                "-preset", config.VIDEO_PRESET,
-                "-tune", config.VIDEO_TUNE,
-                "-b:v", config.VIDEO_BITRATE,
-                "-maxrate", config.VIDEO_BITRATE,  # Max bitrate
-                "-bufsize", f"{bufsize}k",  # Buffer size
-                "-g", "50",  # GOP size (keyframe interval)
-                "-keyint_min", "25",  # Minimum keyframe interval
-                "-sc_threshold", "0",  # Scene change threshold (disable)
-                "-pix_fmt", "yuv420p",  # Pixel format for compatibility
-            ]
+            if has_filters:
+                # Re-encode only if filters are used
+                bitrate_value = config.VIDEO_BITRATE.replace("k", "")
+                try:
+                    bitrate_int = int(bitrate_value)
+                    bufsize = bitrate_int * 2
+                except ValueError:
+                    bufsize = 4000
+                
+                args += [
+                    "-c:v", config.VIDEO_CODEC,
+                    "-preset", config.VIDEO_PRESET,
+                    "-tune", config.VIDEO_TUNE,
+                    "-b:v", config.VIDEO_BITRATE,
+                    "-maxrate", config.VIDEO_BITRATE,
+                    "-bufsize", f"{bufsize}k",
+                    "-g", "50",
+                    "-keyint_min", "25",
+                    "-sc_threshold", "0",
+                    "-pix_fmt", "yuv420p",
+                ]
+            else:
+                # No filters, use copy
+                args += ["-c:v", "copy"]
         else:
-            # Video copy (like your old method)
+            # No extra args: copy only (exactly like your old method)
             args += ["-c:v", "copy"]
         
-        # Audio handling: try copy first if compatible (like your old method)
-        # FFmpeg will automatically re-encode if codec is incompatible with RTMP
-        if audio_codec and audio_codec in ["aac", "libfdk_aac", "aac_latm"]:
-            # AAC is compatible with RTMP/FLV, use copy
-            args += ["-c:a", "copy"]
-        else:
-            # Re-encode audio for RTMP compatibility
-            args += [
-                "-c:a", config.AUDIO_CODEC,
-                "-ar", config.AUDIO_SAMPLE_RATE,
-                "-b:a", config.AUDIO_BITRATE
-            ]
+        # Audio: always copy (like your old method)
+        args += ["-c:a", "copy"]
         
-        # Output format with stability flags
+        # Output format: simple like your old command
         args += [
             "-f", "flv",
-            "-flvflags", "no_duration_filesize",  # Don't update duration/filesize in header (prevents errors)
-            "-avoid_negative_ts", "make_zero",  # Handle negative timestamps
             rtmp
         ]
         
