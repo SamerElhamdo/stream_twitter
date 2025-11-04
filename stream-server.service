@@ -1,0 +1,36 @@
+[Unit]
+Description=Stream Server - FFmpeg Stream Management Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/stream_twitter
+Environment="PATH=/root/stream_twitter/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PORT=3000"
+Environment="WEBHOOK_TOKEN=your_secret_token_here"
+Environment="STREAM_CTL_DIR=/var/streamctl"
+Environment="FFMPEG_BIN=/usr/bin/ffmpeg"
+
+# Use gunicorn for production
+ExecStart=/root/stream_twitter/venv/bin/gunicorn --bind 0.0.0.0:3000 --workers 2 --timeout 120 --access-logfile /var/log/stream-server/access.log --error-logfile /var/log/stream-server/error.log main:app
+
+# Or use Python directly (uncomment to use)
+# ExecStart=/root/stream_twitter/venv/bin/python /root/stream_twitter/main.py
+
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stream-server
+
+# Security settings (commented out for root user)
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=true
+ReadWritePaths=/var/streamctl /var/log/stream-server /root/stream_twitter/uploads
+
+[Install]
+WantedBy=multi-user.target
