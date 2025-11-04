@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify, Response, abort
 from typing import Optional
 import os
 import re
+import json
 import pathlib
 from werkzeug.utils import secure_filename
 
@@ -300,6 +301,69 @@ def get_m3u_channels():
         return jsonify({"error": f"Error parsing M3U file: {str(e)}"}), 500
 
 
+@api.route("/settings/save", methods=["POST"])
+def save_settings():
+    """Save settings to a JSON file."""
+    # No auth required for saving settings
+    body = request.get_json(force=True) or {}
+    
+    try:
+        # Create settings directory if it doesn't exist
+        project_dir = pathlib.Path(__file__).parent.absolute()
+        settings_file = project_dir / "settings.json"
+        
+        # Extract settings from request
+        settings = {
+            "token": body.get("token", ""),
+            "id": body.get("id", ""),
+            "hls": body.get("hls", ""),
+            "rtmp": body.get("rtmp", ""),
+            "image": body.get("image", ""),
+            "extra": body.get("extra", "")
+        }
+        
+        # Save to file
+        with open(settings_file, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+        
+        return jsonify({
+            "status": "saved",
+            "message": "Settings saved successfully",
+            "path": str(settings_file)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error saving settings: {str(e)}"}), 500
+
+
+@api.route("/settings/load", methods=["GET"])
+def load_settings():
+    """Load settings from JSON file."""
+    # No auth required for loading settings
+    try:
+        project_dir = pathlib.Path(__file__).parent.absolute()
+        settings_file = project_dir / "settings.json"
+        
+        if not settings_file.exists():
+            return jsonify({
+                "status": "not_found",
+                "message": "No saved settings found",
+                "settings": {}
+            }), 200
+        
+        with open(settings_file, 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+        
+        return jsonify({
+            "status": "loaded",
+            "message": "Settings loaded successfully",
+            "settings": settings
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error loading settings: {str(e)}"}), 500
+
+
 @api.route("/", methods=["GET"])
 def ui():
     """Serve the web UI for stream control."""
@@ -522,6 +586,7 @@ def ui():
     <button onclick="status()">📊 Status</button>
     <button onclick="refreshStreamsTable()">🔄 Refresh</button>
     <button onclick="viewLogs()">📄 View Logs</button>
+    <button onclick="saveSettings()" style="background: #34c759;">💾 حفظ الإعدادات</button>
   </div>
 
   <div class="section">
@@ -825,8 +890,66 @@ function stopAutoRefresh() {{
   }}
 }}
 
+async function saveSettings() {{
+  const settings = {{
+    token: document.getElementById('token').value,
+    id: document.getElementById('id').value,
+    hls: document.getElementById('hls').value,
+    rtmp: document.getElementById('rtmp').value,
+    image: document.getElementById('image').value,
+    extra: document.getElementById('extra').value
+  }};
+  
+  try {{
+    const response = await fetch('/settings/save', {{
+      method: 'POST',
+      headers: {{
+        'Content-Type': 'application/json'
+      }},
+      body: JSON.stringify(settings)
+    }});
+    
+    const result = await response.json();
+    
+    if (response.ok) {{
+      document.getElementById('out').textContent = `✅ الإعدادات تم حفظها بنجاح\\n${{JSON.stringify(result, null, 2)}}`;
+    }} else {{
+      document.getElementById('out').textContent = `❌ خطأ في حفظ الإعدادات: ${{result.error || 'Unknown error'}}`;
+    }}
+  }} catch (error) {{
+    document.getElementById('out').textContent = `❌ خطأ: ${{error.message}}`;
+  }}
+}}
+
+async function loadSettings() {{
+  try {{
+    const response = await fetch('/settings/load');
+    const result = await response.json();
+    
+    if (response.ok && result.status === 'loaded' && result.settings) {{
+      const settings = result.settings;
+      
+      if (settings.token) document.getElementById('token').value = settings.token;
+      if (settings.id) document.getElementById('id').value = settings.id;
+      if (settings.hls) document.getElementById('hls').value = settings.hls;
+      if (settings.rtmp) document.getElementById('rtmp').value = settings.rtmp;
+      if (settings.image) document.getElementById('image').value = settings.image;
+      if (settings.extra) document.getElementById('extra').value = settings.extra;
+      
+      document.getElementById('out').textContent = `✅ تم تحميل الإعدادات المحفوظة`;
+    }} else if (result.status === 'not_found') {{
+      // No saved settings, use defaults - this is fine
+      document.getElementById('out').textContent = `ℹ️ لا توجد إعدادات محفوظة، سيتم استخدام القيم الافتراضية`;
+    }}
+  }} catch (error) {{
+    // Silently fail on load - don't disrupt user experience
+    console.error('Error loading settings:', error);
+  }}
+}}
+
 // Load channels and streams on page load
 window.addEventListener('DOMContentLoaded', () => {{
+  loadSettings(); // Load saved settings first
   loadChannels();
   startAutoRefresh();
 }});
