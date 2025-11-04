@@ -891,7 +891,7 @@ function playPreview() {{
         previewStatus.style.color = '#ff9500';
         console.warn('Video loading timeout');
       }}
-    }}, 15000);
+    }}, 45000);
     
     // event listener للنجاح
     const playingHandler = () => {{
