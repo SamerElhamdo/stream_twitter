@@ -264,7 +264,7 @@ def ui():
     <input id="image" value="{config.OVERLAY_IMAGE_DEFAULT}" placeholder="Path to overlay image" />
     
     <label>Extra Args (JSON array) — leave empty to copy video</label>
-    <textarea id="extra" rows="4" placeholder='["-i", "/path/to/image.png", "-filter_complex", "..."]'>["-i","{config.OVERLAY_IMAGE_DEFAULT}","-filter_complex","[1:v]scale=iw*min(1280/iw,720/ih):ih*min(1280/iw,720/ih)[scaled];[0:v][scaled]overlay=(W-w)/2:(H-h)/2:format=auto"]</textarea>
+    <textarea id="extra" rows="4" placeholder='["-i", "/path/to/image.png", "-filter_complex", "..."]'>["-i","{config.OVERLAY_IMAGE_DEFAULT}","-filter_complex","[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto"]</textarea>
   </div>
 
   <div class="button-group">

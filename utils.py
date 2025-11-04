@@ -47,12 +47,11 @@ def build_overlay_args(
     if overlay_mode == "full":
         args_str = " ".join(args).lower()
         if "-filter_complex" not in args_str and "overlay" not in args_str:
-            # Full screen overlay: scale to fill and center
-            # Note: In FFmpeg filter_complex, commas inside mathematical expressions need to be escaped
-            # Even when using subprocess with list, FFmpeg requires \ escape for commas in expressions
+            # Full screen overlay: overlay image centered on video
+            # Using direct overlay without scaling first - if image matches video size it works perfectly
+            # If sizes differ, we can use scale separately, but for now this is simplest
             filter_complex = (
-                "[1:v]scale=iw*min(1280/iw\\,720/ih):ih*min(1280/iw\\,720/ih)[scaled];"
-                "[0:v][scaled]overlay=(W-w)/2:(H-h)/2:format=auto"
+                "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto"
             )
             args.extend(["-filter_complex", filter_complex])
     
