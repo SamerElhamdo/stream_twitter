@@ -10,6 +10,8 @@ load_dotenv()
 APP_PORT = int(os.getenv("PORT", "3000"))
 WEBHOOK_TOKEN = os.getenv("WEBHOOK_TOKEN", "CHANGE_ME")
 
+RTMP_URL = os.getenv("RTMP_URL", "rtmp://live.example.com/live/stream_key")
+
 # Paths Configuration
 BASE_DIR = pathlib.Path(os.getenv("STREAM_CTL_DIR", "/var/streamctl"))
 PIDS_DIR = BASE_DIR / "pids"

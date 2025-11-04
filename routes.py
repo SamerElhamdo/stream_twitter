@@ -613,7 +613,7 @@ def ui():
     <input id="hls" value="http://5.9.243.47:8080/live/wawi/Yyf6Y7gQwC/664.m3u8" placeholder="Input HLS stream URL" />
     
     <label>RTMP URL</label>
-    <input id="rtmp" value="" placeholder="Output RTMP stream URL" />
+    <input id="rtmp" value="{config.RTMP_URL}" placeholder="Output RTMP stream URL" />
     
     <label>Image Path (optional)</label>
     <input id="image" value="" placeholder="Path to overlay image" />
