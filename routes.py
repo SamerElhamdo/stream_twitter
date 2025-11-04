@@ -149,7 +149,8 @@ def stop_all_streams():
 @api.route("/", methods=["GET"])
 def ui():
     """Serve the web UI for stream control."""
-    require_auth()
+    # No auth required for UI page - user enters token in the form
+    # Authentication is still required for all API endpoints
     
     html = f"""<!doctype html>
 <html>
