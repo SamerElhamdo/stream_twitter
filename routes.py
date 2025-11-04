@@ -2,6 +2,10 @@
 """Flask routes for stream server API."""
 from flask import Blueprint, request, jsonify, Response
 from typing import Optional
+import os
+import re
+import pathlib
+from werkzeug.utils import secure_filename
 
 from stream_manager import StreamManager
 from utils import require_auth, validate_stream_request
@@ -146,6 +150,137 @@ def stop_all_streams():
     return jsonify({"stopped": stopped}), 200
 
 
+@api.route("/m3u/upload", methods=["POST"])
+def upload_m3u():
+    """Upload M3U file."""
+    # No auth required for upload
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+    
+    if not file.filename.endswith('.m3u') and not file.filename.endswith('.m3u8'):
+        return jsonify({"error": "Invalid file type. Only .m3u and .m3u8 files are allowed"}), 400
+    
+    try:
+        # Create uploads directory if it doesn't exist
+        project_dir = pathlib.Path(__file__).parent.absolute()
+        uploads_dir = project_dir / "uploads"
+        uploads_dir.mkdir(exist_ok=True)
+        
+        # Save file
+        filename = secure_filename(file.filename)
+        filepath = uploads_dir / filename
+        file.save(str(filepath))
+        
+        return jsonify({
+            "status": "uploaded",
+            "filename": filename,
+            "path": str(filepath)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error uploading file: {str(e)}"}), 500
+
+
+@api.route("/m3u/channels", methods=["GET", "POST"])
+def get_m3u_channels():
+    """Parse M3U file and return list of channels."""
+    # No auth required for reading M3U file
+    
+    # Support both GET (file path) and POST (file content)
+    if request.method == "POST":
+        # Parse file content directly from request
+        file_content = request.data.decode('utf-8')
+    else:
+        # Read from file path
+        m3u_path = request.args.get("file", "").strip()
+        
+        if not m3u_path:
+            # Try to find uploaded files
+            project_dir = pathlib.Path(__file__).parent.absolute()
+            uploads_dir = project_dir / "uploads"
+            if uploads_dir.exists():
+                m3u_files = list(uploads_dir.glob("*.m3u*"))
+                if m3u_files:
+                    # Use the most recently modified file
+                    m3u_path = str(sorted(m3u_files, key=lambda p: p.stat().st_mtime, reverse=True)[0])
+            
+            if not m3u_path:
+                # Try default file
+                m3u_path = "tv_channels_wawi_plus.m3u"
+        
+        # Resolve path relative to project directory
+        if not pathlib.Path(m3u_path).is_absolute():
+            project_dir = pathlib.Path(__file__).parent.absolute()
+            # Check uploads first, then project root
+            uploads_path = project_dir / "uploads" / m3u_path
+            if uploads_path.exists():
+                m3u_path = str(uploads_path)
+            else:
+                m3u_path = str(project_dir / m3u_path)
+        
+        if not os.path.exists(m3u_path):
+            return jsonify({"error": f"M3U file not found: {m3u_path}"}), 404
+        
+        try:
+            with open(m3u_path, 'r', encoding='utf-8') as f:
+                file_content = f.read()
+        except Exception as e:
+            return jsonify({"error": f"Error reading file: {str(e)}"}), 500
+    
+    try:
+        channels = []
+        current_channel = None
+        
+        for line in file_content.splitlines():
+            line = line.strip()
+            
+            # Skip empty lines and header
+            if not line or line == '#EXTM3U':
+                continue
+            
+            # Parse EXTINF line
+            if line.startswith('#EXTINF:'):
+                # Extract tvg-name and group-title
+                name_match = re.search(r'tvg-name="([^"]*)"', line)
+                group_match = re.search(r'group-title="([^"]*)"', line)
+                logo_match = re.search(r'tvg-logo="([^"]*)"', line)
+                
+                channel_name = name_match.group(1) if name_match else ""
+                group_title = group_match.group(1) if group_match else ""
+                logo_url = logo_match.group(1) if logo_match else ""
+                
+                # Extract channel name from end of line if not in tvg-name
+                if not channel_name:
+                    parts = line.split(',')
+                    if len(parts) > 1:
+                        channel_name = parts[-1].strip()
+                
+                current_channel = {
+                    "name": channel_name,
+                    "group": group_title,
+                    "logo": logo_url,
+                    "url": None
+                }
+            
+            # Parse URL line
+            elif line.startswith('http') and current_channel:
+                current_channel["url"] = line
+                channels.append(current_channel)
+                current_channel = None
+        
+        return jsonify({
+            "count": len(channels),
+            "channels": channels
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Error parsing M3U file: {str(e)}"}), 500
+
+
 @api.route("/", methods=["GET"])
 def ui():
     """Serve the web UI for stream control."""
@@ -179,7 +314,7 @@ def ui():
       font-size: 14px;
       font-weight: 500;
     }}
-    input, textarea {{ 
+        input, textarea, select {{
       width: 100%;
       padding: 10px 12px;
       margin: 4px 0 12px 0;
@@ -190,10 +325,28 @@ def ui():
       font-size: 14px;
       font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     }}
-    input:focus, textarea:focus {{
+    input:focus, textarea:focus, select:focus {{
       outline: none;
       border-color: #0a84ff;
       box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
+    }}
+    select {{
+      cursor: pointer;
+    }}
+    input[type="file"] {{
+      padding: 8px;
+      cursor: pointer;
+    }}
+    .channel-select-group {{
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }}
+    .channel-select-group select {{
+      flex: 1;
+    }}
+    .channel-select-group button {{
+      flex: 0 0 auto;
     }}
     button {{
       padding: 10px 16px;
@@ -248,6 +401,25 @@ def ui():
   <h2>Stream Control Panel</h2>
   
   <div class="section">
+    <h3>M3U Channel Selector</h3>
+    <label>Upload M3U File</label>
+    <input type="file" id="m3uFile" accept=".m3u,.m3u8" />
+    <button onclick="uploadM3U()" style="margin-top: 8px;">📤 Upload & Load Channels</button>
+    
+    <label style="margin-top: 20px;">Select Channel</label>
+    <div class="channel-select-group">
+      <select id="channelSelect" onchange="selectChannel()">
+        <option value="">-- Select a channel --</option>
+      </select>
+      <button onclick="loadChannels()">🔄 Reload Channels</button>
+    </div>
+    <small style="color: #666; display: block; margin-top: -8px; margin-bottom: 12px;">
+      Total channels: <span id="channelCount">0</span>
+    </small>
+  </div>
+  
+  <div class="section">
+    <h3>Stream Settings</h3>
     <label>Authorization Token</label>
     <input id="token" placeholder="Bearer token" value="Bearer {config.WEBHOOK_TOKEN}" />
     
@@ -281,6 +453,8 @@ def ui():
   </div>
 
 <script>
+let channelsData = [];
+
 function authHeader() {{
   let token = document.getElementById('token').value || '';
   if (!token.startsWith('Bearer ')) {{
@@ -288,6 +462,103 @@ function authHeader() {{
   }}
   return token;
 }}
+
+async function uploadM3U() {{
+  const fileInput = document.getElementById('m3uFile');
+  const file = fileInput.files[0];
+  
+  if (!file) {{
+    alert('Please select a file first');
+    return;
+  }}
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {{
+    const response = await fetch('/m3u/upload', {{
+      method: 'POST',
+      body: formData
+    }});
+    
+    const result = await response.json();
+    
+    if (response.ok) {{
+      document.getElementById('out').textContent = `File uploaded successfully: ${{result.filename}}\\n\\n${{JSON.stringify(result, null, 2)}}`;
+      // Automatically load channels after upload
+      await loadChannels();
+    }} else {{
+      document.getElementById('out').textContent = `Error: ${{result.error}}`;
+    }}
+  }} catch (error) {{
+    document.getElementById('out').textContent = `Error: ${{error.message}}`;
+  }}
+}}
+
+async function loadChannels() {{
+  try {{
+    const response = await fetch('/m3u/channels');
+    const result = await response.json();
+    
+    if (response.ok && result.channels) {{
+      channelsData = result.channels;
+      const select = document.getElementById('channelSelect');
+      
+      // Clear existing options except the first one
+      select.innerHTML = '<option value="">-- Select a channel --</option>';
+      
+      // Group channels by group title
+      const groupedChannels = {{}};
+      result.channels.forEach((channel, index) => {{
+        const group = channel.group || 'Other';
+        if (!groupedChannels[group]) {{
+          groupedChannels[group] = [];
+        }}
+        groupedChannels[group].push({{...channel, index}});
+      }});
+      
+      // Add options grouped by category
+      Object.keys(groupedChannels).sort().forEach(group => {{
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = group;
+        
+        groupedChannels[group].forEach(channel => {{
+          const option = document.createElement('option');
+          option.value = channel.index;
+          option.textContent = channel.name || 'Unnamed Channel';
+          optgroup.appendChild(option);
+        }});
+        
+        select.appendChild(optgroup);
+      }});
+      
+      document.getElementById('channelCount').textContent = result.count;
+      document.getElementById('out').textContent = `Loaded ${{result.count}} channels from M3U file`;
+    }} else {{
+      document.getElementById('out').textContent = `Error: ${{result.error || 'Failed to load channels'}}`;
+    }}
+  }} catch (error) {{
+    document.getElementById('out').textContent = `Error: ${{error.message}}`;
+  }}
+}}
+
+function selectChannel() {{
+  const select = document.getElementById('channelSelect');
+  const selectedIndex = select.value;
+  
+  if (selectedIndex && channelsData[selectedIndex]) {{
+    const channel = channelsData[selectedIndex];
+    document.getElementById('hls').value = channel.url || '';
+    document.getElementById('id').value = channel.name.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'channel_stream';
+    
+    document.getElementById('out').textContent = `Selected channel: ${{channel.name}}\\nGroup: ${{channel.group || 'N/A'}}\\nURL: ${{channel.url}}`;
+  }}
+}}
+
+// Load channels on page load
+window.addEventListener('DOMContentLoaded', () => {{
+  loadChannels();
+}});
 
 async function apiCall(endpoint, method, payload = null) {{
   const options = {{
