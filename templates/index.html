@@ -860,6 +860,11 @@ async function loadSettings() {
         console.log('Loaded extra:', settings.extra);
       }
       
+      // توليد الأمر بعد تحميل الإعدادات
+      setTimeout(() => {
+        generateFFmpegCommand();
+      }, 100);
+      
       if (loadedCount > 0) {
         const message = `✅ تم تحميل الإعدادات المحفوظة (${loadedCount} حقول)`;
         console.log(message);
@@ -887,31 +892,46 @@ async function loadSettings() {
 // Load channels and streams on page load
 window.addEventListener('DOMContentLoaded', () => {
   console.log('DOM loaded, starting initialization...');
-  // تحميل الإعدادات أولاً مع تأخير صغير للتأكد من جاهزية DOM
-  setTimeout(() => {
-    loadSettings();
-    // توليد الأمر بعد تحميل الإعدادات
-    setTimeout(() => {
-      generateFFmpegCommand();
-    }, 300);
-  }, 200);
-  loadChannels();
-  startAutoRefresh();
   
-  // إضافة event listeners لتحديث الأمر تلقائياً
+  // إضافة event listeners لتحديث الأمر تلقائياً (قبل تحميل الإعدادات)
   const hlsInput = document.getElementById('hls');
   const rtmpInput = document.getElementById('rtmp');
   const imageInput = document.getElementById('image');
   const extraInput = document.getElementById('extra');
   
-  if (hlsInput) hlsInput.addEventListener('input', generateFFmpegCommand);
-  if (hlsInput) hlsInput.addEventListener('change', generateFFmpegCommand);
-  if (rtmpInput) rtmpInput.addEventListener('input', generateFFmpegCommand);
-  if (rtmpInput) rtmpInput.addEventListener('change', generateFFmpegCommand);
-  if (imageInput) imageInput.addEventListener('input', generateFFmpegCommand);
-  if (imageInput) imageInput.addEventListener('change', generateFFmpegCommand);
-  if (extraInput) extraInput.addEventListener('input', generateFFmpegCommand);
-  if (extraInput) extraInput.addEventListener('change', generateFFmpegCommand);
+  if (hlsInput) {
+    hlsInput.addEventListener('input', generateFFmpegCommand);
+    hlsInput.addEventListener('change', generateFFmpegCommand);
+  }
+  if (rtmpInput) {
+    rtmpInput.addEventListener('input', generateFFmpegCommand);
+    rtmpInput.addEventListener('change', generateFFmpegCommand);
+  }
+  if (imageInput) {
+    imageInput.addEventListener('input', generateFFmpegCommand);
+    imageInput.addEventListener('change', generateFFmpegCommand);
+  }
+  if (extraInput) {
+    extraInput.addEventListener('input', generateFFmpegCommand);
+    extraInput.addEventListener('change', generateFFmpegCommand);
+  }
+  
+  // تحميل الإعدادات أولاً مع تأخير صغير للتأكد من جاهزية DOM
+  setTimeout(() => {
+    loadSettings();
+    // توليد الأمر بعد تحميل الإعدادات (سيتم توليده أيضاً في loadSettings)
+    setTimeout(() => {
+      generateFFmpegCommand();
+    }, 500);
+  }, 200);
+  
+  loadChannels();
+  startAutoRefresh();
+  
+  // توليد الأمر الأولي بعد تحميل الصفحة
+  setTimeout(() => {
+    generateFFmpegCommand();
+  }, 1000);
 });
 
 // Cleanup on page unload
@@ -951,12 +971,27 @@ async function apiCall(endpoint, method, payload = null) {
 }
 
 function generateFFmpegCommand() {
-  const hls = document.getElementById('hls').value.trim();
-  const rtmp = document.getElementById('rtmp').value.trim();
-  const image = document.getElementById('image').value.trim();
-  const extraRaw = document.getElementById('extra').value.trim();
+  const hlsEl = document.getElementById('hls');
+  const rtmpEl = document.getElementById('rtmp');
+  const imageEl = document.getElementById('image');
+  const extraEl = document.getElementById('extra');
   
-  if (!hls || !rtmp) {
+  if (!hlsEl || !rtmpEl) {
+    return;
+  }
+  
+  let hls = hlsEl.value.trim();
+  let rtmp = rtmpEl.value.trim();
+  const image = imageEl ? imageEl.value.trim() : '';
+  const extraRaw = extraEl ? extraEl.value.trim() : '';
+  
+  // تجاهل القيم التي تحتوي على placeholders
+  if (rtmp.includes('{RTMP_URL_PLACEHOLDER}') || rtmp.includes('{TOKEN_PLACEHOLDER}')) {
+    document.getElementById('ffmpegCommand').value = '# انتظر تحميل الإعدادات...';
+    return;
+  }
+  
+  if (!hls || !rtmp || hls === '' || rtmp === '') {
     document.getElementById('ffmpegCommand').value = '# املأ HLS URL و RTMP URL أولاً';
     return;
   }
