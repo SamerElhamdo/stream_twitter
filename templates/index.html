@@ -879,13 +879,25 @@ async function loadSettings() {
       const message = `ℹ️ لا توجد إعدادات محفوظة، سيتم استخدام القيم الافتراضية`;
       console.log(message);
       document.getElementById('out').textContent = message;
+      // توليد الأمر حتى بدون إعدادات محفوظة (استخدام القيم الافتراضية)
+      setTimeout(() => {
+        generateFFmpegCommand();
+      }, 100);
     } else {
       console.log('Unexpected response:', result);
       document.getElementById('out').textContent = `⚠️ استجابة غير متوقعة: ${JSON.stringify(result)}`;
+      // محاولة توليد الأمر على أي حال
+      setTimeout(() => {
+        generateFFmpegCommand();
+      }, 100);
     }
   } catch (error) {
     console.error('Error loading settings:', error);
     document.getElementById('out').textContent = `⚠️ خطأ في تحميل الإعدادات: ${error.message}`;
+    // محاولة توليد الأمر على أي حال
+    setTimeout(() => {
+      generateFFmpegCommand();
+    }, 100);
   }
 }
 
@@ -985,14 +997,25 @@ function generateFFmpegCommand() {
   const image = imageEl ? imageEl.value.trim() : '';
   const extraRaw = extraEl ? extraEl.value.trim() : '';
   
-  // تجاهل القيم التي تحتوي على placeholders
-  if (rtmp.includes('{RTMP_URL_PLACEHOLDER}') || rtmp.includes('{TOKEN_PLACEHOLDER}')) {
-    document.getElementById('ffmpegCommand').value = '# انتظر تحميل الإعدادات...';
+  // التحقق من القيم الفارغة فقط (تجاهل placeholders لأنها ستُستبدل تلقائياً)
+  if (!hls || hls === '' || hls.trim() === '') {
+    document.getElementById('ffmpegCommand').value = '# املأ HLS URL أولاً';
     return;
   }
   
-  if (!hls || !rtmp || hls === '' || rtmp === '') {
-    document.getElementById('ffmpegCommand').value = '# املأ HLS URL و RTMP URL أولاً';
+  // التحقق من RTMP URL
+  if (!rtmp || rtmp.trim() === '' || rtmp.trim() === '{RTMP_URL_PLACEHOLDER}') {
+    document.getElementById('ffmpegCommand').value = '# املأ RTMP URL';
+    return;
+  }
+  
+  // إذا كان RTMP URL لا يزال placeholder (لم يتم استبداله بعد)، ننتظر
+  if (rtmp.includes('{RTMP_URL_PLACEHOLDER}') || rtmp.includes('{TOKEN_PLACEHOLDER}')) {
+    // محاولة أخرى بعد قليل (placeholder سيتم استبداله تلقائياً من config)
+    setTimeout(() => {
+      generateFFmpegCommand();
+    }, 300);
+    document.getElementById('ffmpegCommand').value = '# جاري تحميل RTMP URL من الإعدادات...';
     return;
   }
   
