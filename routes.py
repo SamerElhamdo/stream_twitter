@@ -804,6 +804,9 @@ function selectChannel() {{
   const select = document.getElementById('channelSelect');
   const selectedIndex = select.value;
   
+  // إيقاف المشغل الحالي أولاً لتجنب AbortError
+  stopPreview();
+  
   if (selectedIndex && channelsData[selectedIndex]) {{
     const channel = channelsData[selectedIndex];
     document.getElementById('hls').value = channel.url || '';
@@ -819,10 +822,14 @@ function selectChannel() {{
       const previewStatus = document.getElementById('previewStatus');
       
       previewDiv.classList.add('active');
-      previewSource.src = channel.url;
-      previewVideo.load();
-      previewStatus.textContent = `جاهز: ${{channel.name}}`;
-      previewStatus.style.color = '#34c759';
+      
+      // انتظر قليلاً قبل تحميل المصدر الجديد
+      setTimeout(() => {{
+        previewSource.src = channel.url;
+        previewVideo.load();
+        previewStatus.textContent = `جاهز: ${{channel.name}} - اضغط تشغيل للاختبار`;
+        previewStatus.style.color = '#0a84ff';
+      }}, 100);
     }}
   }} else {{
     // إخفاء مشغل المعاينة
@@ -836,30 +843,111 @@ function playPreview() {{
   const previewVideo = document.getElementById('previewVideo');
   const previewStatus = document.getElementById('previewStatus');
   
+  // إزالة event listeners السابقة لتجنب التكرار
+  const newVideo = previewVideo.cloneNode(true);
+  previewVideo.parentNode.replaceChild(newVideo, previewVideo);
+  const updatedVideo = document.getElementById('previewVideo');
+  
+  // إعداد timeout للتأخير
+  let timeoutId;
+  let isPlaying = false;
+  
+  const clearTimeout = () => {{
+    if (timeoutId) {{
+      window.clearTimeout(timeoutId);
+      timeoutId = null;
+    }}
+  }};
+  
   try {{
-    previewVideo.play();
     previewStatus.textContent = 'جاري التشغيل...';
     previewStatus.style.color = '#0a84ff';
     
-    previewVideo.addEventListener('playing', () => {{
+    // timeout لمدة 15 ثانية للتأخير
+    timeoutId = setTimeout(() => {{
+      if (!isPlaying) {{
+        previewStatus.textContent = '⏱️ وقت الانتظار انتهى - المصدر بطيء';
+        previewStatus.style.color = '#ff9500';
+        console.warn('Video loading timeout');
+      }}
+    }}, 15000);
+    
+    // event listener للنجاح
+    updatedVideo.addEventListener('playing', () => {{
+      clearTimeout();
+      isPlaying = true;
       previewStatus.textContent = '✅ يعمل';
       previewStatus.style.color = '#34c759';
-    }});
+    }}, {{ once: true }});
     
-    previewVideo.addEventListener('error', (e) => {{
-      previewStatus.textContent = '❌ خطأ: المصدر غير متاح';
+    // event listener للأخطاء
+    updatedVideo.addEventListener('error', (e) => {{
+      clearTimeout();
+      const error = updatedVideo.error;
+      let errorMsg = '❌ خطأ: المصدر غير متاح';
+      
+      if (error) {{
+        switch(error.code) {{
+          case error.MEDIA_ERR_ABORTED:
+            errorMsg = '❌ تم إلغاء التحميل';
+            break;
+          case error.MEDIA_ERR_NETWORK:
+            errorMsg = '❌ خطأ في الشبكة';
+            break;
+          case error.MEDIA_ERR_DECODE:
+            errorMsg = '❌ خطأ في فك التشفير';
+            break;
+          case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMsg = '❌ المصدر غير مدعوم';
+            break;
+        }}
+      }}
+      
+      previewStatus.textContent = errorMsg;
       previewStatus.style.color = '#ff3b30';
-      console.error('Video error:', e);
+      console.error('Video error:', error, e);
+    }}, {{ once: true }});
+    
+    // event listener للتحميل
+    updatedVideo.addEventListener('waiting', () => {{
+      if (!isPlaying) {{
+        previewStatus.textContent = '⏳ جاري التحميل...';
+        previewStatus.style.color = '#ff9500';
+      }}
     }});
     
-    previewVideo.addEventListener('waiting', () => {{
-      previewStatus.textContent = '⏳ جاري التحميل...';
-      previewStatus.style.color = '#ff9500';
-    }});
+    updatedVideo.addEventListener('canplay', () => {{
+      previewStatus.textContent = '📺 جاهز للتشغيل';
+      previewStatus.style.color = '#0a84ff';
+    }}, {{ once: true }});
+    
+    // محاولة التشغيل
+    const playPromise = updatedVideo.play();
+    
+    if (playPromise !== undefined) {{
+      playPromise.then(() => {{
+        clearTimeout();
+        isPlaying = true;
+        previewStatus.textContent = '✅ يعمل';
+        previewStatus.style.color = '#34c759';
+      }}).catch((error) => {{
+        clearTimeout();
+        // تجاهل AbortError - يحدث عند تغيير المصدر
+        if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {{
+          previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
+          previewStatus.style.color = '#ff3b30';
+          console.error('Play error:', error);
+        }}
+      }});
+    }}
   }} catch (error) {{
-    previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
-    previewStatus.style.color = '#ff3b30';
-    console.error('Play error:', error);
+    clearTimeout();
+    // تجاهل AbortError
+    if (error.name !== 'AbortError') {{
+      previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
+      previewStatus.style.color = '#ff3b30';
+      console.error('Play error:', error);
+    }}
   }}
 }}
 
@@ -867,10 +955,25 @@ function stopPreview() {{
   const previewVideo = document.getElementById('previewVideo');
   const previewStatus = document.getElementById('previewStatus');
   
-  previewVideo.pause();
-  previewVideo.currentTime = 0;
-  previewStatus.textContent = 'متوقف';
-  previewStatus.style.color = '#666';
+  try {{
+    // إيقاف التشغيل بشكل آمن
+    if (previewVideo && !previewVideo.paused) {{
+      previewVideo.pause();
+    }}
+    if (previewVideo) {{
+      previewVideo.currentTime = 0;
+      // إزالة المصدر لتجنب AbortError
+      previewVideo.src = '';
+      previewVideo.load();
+    }}
+    if (previewStatus) {{
+      previewStatus.textContent = 'متوقف';
+      previewStatus.style.color = '#666';
+    }}
+  }} catch (error) {{
+    // تجاهل الأخطاء عند الإيقاف
+    console.log('Stop preview error (ignored):', error);
+  }}
 }}
 
 // Streams table management
