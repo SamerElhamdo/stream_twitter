@@ -406,6 +406,129 @@ def load_settings():
         return jsonify({"error": f"Error loading settings: {str(e)}"}), 500
 
 
+@api.route("/source/check", methods=["POST"])
+def check_source():
+    """
+    Check if HLS source is available and accessible.
+    Returns status without actually playing the stream.
+    """
+    # No auth required for source check
+    body = request.get_json(force=True) or {}
+    source_url = body.get("url", "").strip()
+    
+    if not source_url:
+        return jsonify({"error": "Source URL is required"}), 400
+    
+    try:
+        import requests
+        import time
+        
+        # timeout للتحقق من المصدر (10 ثوان)
+        timeout = 10
+        
+        # محاولة الوصول إلى ملف M3U8
+        start_time = time.time()
+        
+        try:
+            response = requests.head(source_url, timeout=timeout, allow_redirects=True)
+            elapsed = time.time() - start_time
+            
+            if response.status_code == 200:
+                return jsonify({
+                    "status": "available",
+                    "message": "المصدر متاح",
+                    "response_time": round(elapsed, 2),
+                    "status_code": response.status_code
+                }), 200
+            else:
+                return jsonify({
+                    "status": "unavailable",
+                    "message": f"المصدر غير متاح (HTTP {response.status_code})",
+                    "response_time": round(elapsed, 2),
+                    "status_code": response.status_code
+                }), 200
+                
+        except requests.exceptions.Timeout:
+            elapsed = time.time() - start_time
+            return jsonify({
+                "status": "timeout",
+                "message": "انتهى وقت الانتظار - المصدر بطيء أو غير متاح",
+                "response_time": round(elapsed, 2)
+            }), 200
+            
+        except requests.exceptions.ConnectionError:
+            elapsed = time.time() - start_time
+            return jsonify({
+                "status": "unavailable",
+                "message": "خطأ في الاتصال - المصدر غير متاح",
+                "response_time": round(elapsed, 2)
+            }), 200
+            
+        except requests.exceptions.RequestException as e:
+            elapsed = time.time() - start_time
+            return jsonify({
+                "status": "error",
+                "message": f"خطأ في التحقق: {str(e)}",
+                "response_time": round(elapsed, 2)
+            }), 200
+            
+    except ImportError:
+        # إذا لم يكن requests متوفر، استخدم urllib
+        try:
+            from urllib.request import urlopen, Request
+            from urllib.error import URLError, HTTPError
+            import time
+            
+            start_time = time.time()
+            req = Request(source_url, method='HEAD')
+            req.add_header('User-Agent', 'Mozilla/5.0')
+            
+            try:
+                response = urlopen(req, timeout=timeout)
+                elapsed = time.time() - start_time
+                
+                if response.status == 200:
+                    return jsonify({
+                        "status": "available",
+                        "message": "المصدر متاح",
+                        "response_time": round(elapsed, 2),
+                        "status_code": response.status
+                    }), 200
+                else:
+                    return jsonify({
+                        "status": "unavailable",
+                        "message": f"المصدر غير متاح (HTTP {response.status})",
+                        "response_time": round(elapsed, 2),
+                        "status_code": response.status
+                    }), 200
+                    
+            except HTTPError as e:
+                elapsed = time.time() - start_time
+                return jsonify({
+                    "status": "unavailable",
+                    "message": f"المصدر غير متاح (HTTP {e.code})",
+                    "response_time": round(elapsed, 2),
+                    "status_code": e.code
+                }), 200
+                
+            except URLError as e:
+                elapsed = time.time() - start_time
+                return jsonify({
+                    "status": "error",
+                    "message": f"خطأ في الاتصال: {str(e.reason)}",
+                    "response_time": round(elapsed, 2)
+                }), 200
+                
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"خطأ في التحقق: {str(e)}"
+            }), 500
+            
+    except Exception as e:
+        return jsonify({"error": f"Error checking source: {str(e)}"}), 500
+
+
 @api.route("/", methods=["GET"])
 def ui():
     """Serve the web UI for stream control."""
@@ -578,36 +701,32 @@ def ui():
       resize: vertical;
       min-height: 80px;
     }}
-    .video-preview {{
+    .source-status {{
       margin-top: 12px;
+      padding: 8px 12px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-size: 12px;
       display: none;
     }}
-    .video-preview.active {{
+    .source-status.active {{
       display: block;
     }}
-    .video-preview video {{
-      width: 240px;
-      height: 135px;
-      background: #000;
-      border: 2px solid #333;
-      border-radius: 4px;
-      object-fit: contain;
+    .source-status.checking {{
+      color: #0a84ff;
     }}
-    .video-preview-controls {{
-      display: flex;
-      gap: 8px;
-      margin-top: 8px;
-      align-items: center;
+    .source-status.available {{
+      color: #34c759;
+      border-color: #34c759;
     }}
-    .video-preview-controls button {{
-      padding: 6px 12px;
-      font-size: 12px;
-      margin: 0;
+    .source-status.unavailable {{
+      color: #ff3b30;
+      border-color: #ff3b30;
     }}
-    .video-preview-status {{
-      font-size: 11px;
-      color: #666;
-      margin-left: 8px;
+    .source-status.timeout {{
+      color: #ff9500;
+      border-color: #ff9500;
     }}
   </style>
 </head>
@@ -631,17 +750,8 @@ def ui():
       Total channels: <span id="channelCount">0</span>
     </small>
     
-    <div class="video-preview" id="videoPreview">
-      <label style="margin-top: 16px; display: block;">معاينة القناة</label>
-      <video id="previewVideo" controls muted>
-        <source id="previewVideoSource" src="" type="application/x-mpegURL">
-        المتصفح لا يدعم مشغل HLS. يرجى استخدام متصفح حديث.
-      </video>
-      <div class="video-preview-controls">
-        <button onclick="playPreview()" style="background: #34c759;">▶ تشغيل</button>
-        <button onclick="stopPreview()" style="background: #ff3b30;">⏹ إيقاف</button>
-        <span class="video-preview-status" id="previewStatus"></span>
-      </div>
+    <div class="source-status" id="sourceStatus">
+      <span id="sourceStatusText">جاهز للفحص</span>
     </div>
   </div>
   
@@ -804,9 +914,6 @@ function selectChannel() {{
   const select = document.getElementById('channelSelect');
   const selectedIndex = select.value;
   
-  // إيقاف المشغل الحالي أولاً لتجنب AbortError
-  stopPreview();
-  
   if (selectedIndex && channelsData[selectedIndex]) {{
     const channel = channelsData[selectedIndex];
     document.getElementById('hls').value = channel.url || '';
@@ -814,211 +921,93 @@ function selectChannel() {{
     
     document.getElementById('out').textContent = `Selected channel: ${{channel.name}}\\nGroup: ${{channel.group || 'N/A'}}\\nURL: ${{channel.url}}`;
     
-    // إظهار مشغل المعاينة وإعداد URL
+    // فحص المصدر تلقائياً عند اختيار القناة
     if (channel.url) {{
-      const previewDiv = document.getElementById('videoPreview');
-      const previewVideo = document.getElementById('previewVideo');
-      const previewSource = document.getElementById('previewVideoSource');
-      const previewStatus = document.getElementById('previewStatus');
-      
-      previewDiv.classList.add('active');
-      
-      // انتظر قليلاً قبل تحميل المصدر الجديد
-      setTimeout(() => {{
-        previewSource.src = channel.url;
-        previewVideo.load();
-        previewStatus.textContent = `جاهز: ${{channel.name}} - اضغط تشغيل للاختبار`;
-        previewStatus.style.color = '#0a84ff';
-      }}, 100);
+      checkSource(channel.url, channel.name);
     }}
   }} else {{
-    // إخفاء مشغل المعاينة
-    const previewDiv = document.getElementById('videoPreview');
-    previewDiv.classList.remove('active');
-    stopPreview();
+    // إخفاء حالة الفحص
+    const statusDiv = document.getElementById('sourceStatus');
+    statusDiv.classList.remove('active', 'checking', 'available', 'unavailable', 'timeout');
   }}
 }}
 
-// متغيرات للتحكم في event listeners
-let previewVideoListeners = {{}};
+// متغير للتحكم في عملية الفحص
+let sourceCheckAbortController = null;
 
-function playPreview() {{
-  const previewVideo = document.getElementById('previewVideo');
-  const previewSource = document.getElementById('previewVideoSource');
-  const previewStatus = document.getElementById('previewStatus');
+async function checkSource(url, channelName) {{
+  const statusDiv = document.getElementById('sourceStatus');
+  const statusText = document.getElementById('sourceStatusText');
   
-  if (!previewVideo || !previewSource || !previewStatus) {{
-    console.error('Preview elements not found');
+  if (!statusDiv || !statusText) {{
+    console.error('Source status elements not found');
     return;
   }}
   
-  // التحقق من وجود المصدر
-  const videoSrc = previewSource.src || previewVideo.src;
-  if (!videoSrc || videoSrc.trim() === '') {{
-    previewStatus.textContent = '⚠️ يرجى اختيار قناة أولاً';
-    previewStatus.style.color = '#ff9500';
-    return;
+  // إيقاف عملية الفحص السابقة إن وجدت
+  if (sourceCheckAbortController) {{
+    sourceCheckAbortController.abort();
   }}
   
-  // إزالة event listeners السابقة
-  Object.keys(previewVideoListeners).forEach(event => {{
-    previewVideo.removeEventListener(event, previewVideoListeners[event]);
-  }});
-  previewVideoListeners = {{}};
+  // إنشاء AbortController جديد
+  sourceCheckAbortController = new AbortController();
+  const signal = sourceCheckAbortController.signal;
   
-  // إعداد timeout للتأخير
-  let timeoutId;
-  let isPlaying = false;
-  
-  const clearTimeoutHandler = () => {{
-    if (timeoutId) {{
-      window.clearTimeout(timeoutId);
-      timeoutId = null;
-    }}
-  }};
+  // إظهار حالة الفحص
+  statusDiv.classList.add('active', 'checking');
+  statusDiv.classList.remove('available', 'unavailable', 'timeout');
+  statusText.textContent = `⏳ جاري فحص المصدر: ${{channelName || '...'}}`;
   
   try {{
-    previewStatus.textContent = 'جاري التشغيل...';
-    previewStatus.style.color = '#0a84ff';
-    
-    // إعادة تحميل المصدر
-    previewVideo.load();
-    
-    // timeout لمدة 15 ثانية للتأخير
-    timeoutId = setTimeout(() => {{
-      if (!isPlaying) {{
-        previewStatus.textContent = '⏱️ وقت الانتظار انتهى - المصدر بطيء أو غير متاح';
-        previewStatus.style.color = '#ff9500';
-        console.warn('Video loading timeout');
-      }}
-    }}, 45000);
-    
-    // event listener للنجاح
-    const playingHandler = () => {{
-      clearTimeoutHandler();
-      isPlaying = true;
-      previewStatus.textContent = '✅ يعمل';
-      previewStatus.style.color = '#34c759';
-    }};
-    previewVideo.addEventListener('playing', playingHandler, {{ once: true }});
-    previewVideoListeners['playing'] = playingHandler;
-    
-    // event listener للأخطاء
-    const errorHandler = (e) => {{
-      clearTimeoutHandler();
-      const error = previewVideo.error;
-      let errorMsg = '❌ خطأ: المصدر غير متاح';
-      
-      if (error) {{
-        switch(error.code) {{
-          case error.MEDIA_ERR_ABORTED:
-            errorMsg = '❌ تم إلغاء التحميل';
-            break;
-          case error.MEDIA_ERR_NETWORK:
-            errorMsg = '❌ خطأ في الشبكة - تحقق من الاتصال';
-            break;
-          case error.MEDIA_ERR_DECODE:
-            errorMsg = '❌ خطأ في فك التشفير';
-            break;
-          case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = '❌ المصدر غير مدعوم - قد يحتاج HLS.js';
-            break;
-        }}
-      }} else if (e && e.message) {{
-        errorMsg = '❌ ' + e.message;
-      }}
-      
-      previewStatus.textContent = errorMsg;
-      previewStatus.style.color = '#ff3b30';
-      console.error('Video error:', error, e);
-    }};
-    previewVideo.addEventListener('error', errorHandler, {{ once: true }});
-    previewVideoListeners['error'] = errorHandler;
-    
-    // event listener للتحميل
-    const waitingHandler = () => {{
-      if (!isPlaying) {{
-        previewStatus.textContent = '⏳ جاري التحميل...';
-        previewStatus.style.color = '#ff9500';
-      }}
-    }};
-    previewVideo.addEventListener('waiting', waitingHandler);
-    previewVideoListeners['waiting'] = waitingHandler;
-    
-    const canplayHandler = () => {{
-      previewStatus.textContent = '📺 جاهز للتشغيل';
-      previewStatus.style.color = '#0a84ff';
-    }};
-    previewVideo.addEventListener('canplay', canplayHandler, {{ once: true }});
-    previewVideoListeners['canplay'] = canplayHandler;
-    
-    // محاولة التشغيل
-    const playPromise = previewVideo.play();
-    
-    if (playPromise !== undefined) {{
-      playPromise.then(() => {{
-        clearTimeoutHandler();
-        isPlaying = true;
-        previewStatus.textContent = '✅ يعمل';
-        previewStatus.style.color = '#34c759';
-      }}).catch((error) => {{
-        clearTimeoutHandler();
-        // تجاهل AbortError و NotAllowedError - أخطاء طبيعية
-        if (error.name === 'AbortError' || error.name === 'NotAllowedError') {{
-          console.log('Play interrupted (normal):', error.name);
-          return;
-        }}
-        
-        // NotSupportedError يعني أن المصدر غير مدعوم (قد يحتاج HLS.js)
-        if (error.name === 'NotSupportedError') {{
-          previewStatus.textContent = '⚠️ المصدر قد يحتاج HLS.js - بعض المتصفحات لا تدعم HLS مباشرة';
-          previewStatus.style.color = '#ff9500';
-        }} else {{
-          previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
-          previewStatus.style.color = '#ff3b30';
-        }}
-        console.error('Play error:', error);
-      }});
-    }}
-  }} catch (error) {{
-    clearTimeoutHandler();
-    // تجاهل AbortError
-    if (error.name !== 'AbortError') {{
-      previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
-      previewStatus.style.color = '#ff3b30';
-      console.error('Play error:', error);
-    }}
-  }}
-}}
-
-function stopPreview() {{
-  const previewVideo = document.getElementById('previewVideo');
-  const previewStatus = document.getElementById('previewStatus');
-  
-  try {{
-    // إزالة event listeners
-    Object.keys(previewVideoListeners).forEach(event => {{
-      if (previewVideo) {{
-        previewVideo.removeEventListener(event, previewVideoListeners[event]);
-      }}
+    const response = await fetch('/source/check', {{
+      method: 'POST',
+      headers: {{
+        'Content-Type': 'application/json'
+      }},
+      body: JSON.stringify({{ url: url }}),
+      signal: signal
     }});
-    previewVideoListeners = {{}};
     
-    // إيقاف التشغيل بشكل آمن
-    if (previewVideo) {{
-      if (!previewVideo.paused) {{
-        previewVideo.pause();
-      }}
-      previewVideo.currentTime = 0;
-      // لا نزيل المصدر - فقط نوقف
-    }}
-    if (previewStatus) {{
-      previewStatus.textContent = 'متوقف';
-      previewStatus.style.color = '#666';
-    }}
+    const result = await response.json();
+    
+    // إزالة حالة الفحص
+    statusDiv.classList.remove('checking');
+    
+    if (result.status === 'available') {{
+      statusDiv.classList.add('available');
+      statusText.textContent = `✅ المصدر متاح (${{result.response_time}}s) - ${{channelName || 'قناة'}}`;
+      console.log('Source check successful:', result);
+    }} else if (result.status === 'timeout') {{
+      statusDiv.classList.add('timeout');
+      statusText.textContent = `⏱️ ${{result.message}} (${{result.response_time}}s)`;
+      console.warn('Source check timeout:', result);
+    }} else if (result.status === 'unavailable' || result.status === 'error') {{
+      statusDiv.classList.add('unavailable');
+      statusText.textContent = `❌ ${{result.message}}`;
+      console.error('Source check failed:', result);
+    }} else {{
+      statusDiv.classList.add('unavailable');
+      statusText.textContent = `⚠️ حالة غير معروفة: ${{result.status}}`;
+    }
+    
+    // إيقاف عملية الفحص بعد الانتهاء
+    sourceCheckAbortController = null;
+    
   }} catch (error) {{
-    // تجاهل الأخطاء عند الإيقاف
-    console.log('Stop preview error (ignored):', error);
+    // إيقاف عملية الفحص
+    sourceCheckAbortController = null;
+    
+    // تجاهل AbortError (يحدث عند إلغاء الطلب)
+    if (error.name === 'AbortError') {{
+      console.log('Source check aborted');
+      return;
+    }}
+    
+    // إظهار خطأ
+    statusDiv.classList.remove('checking');
+    statusDiv.classList.add('unavailable');
+    statusText.textContent = `❌ خطأ في فحص المصدر: ${{error.message}}`;
+    console.error('Source check error:', error);
   }}
 }}
 
