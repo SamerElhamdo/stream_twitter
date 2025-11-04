@@ -988,7 +988,7 @@ async function checkSource(url, channelName) {{
     }} else {{
       statusDiv.classList.add('unavailable');
       statusText.textContent = `⚠️ حالة غير معروفة: ${{result.status}}`;
-    }
+    }}
     
     // إيقاف عملية الفحص بعد الانتهاء
     sourceCheckAbortController = null;
