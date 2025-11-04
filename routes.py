@@ -927,51 +927,76 @@ async function saveSettings() {{
 
 async function loadSettings() {{
   try {{
+    // انتظر قليلاً للتأكد من أن DOM جاهز تماماً
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const response = await fetch('/settings/load');
     const result = await response.json();
+    
+    console.log('Settings load response:', result);
     
     if (response.ok && result.status === 'loaded' && result.settings) {{
       const settings = result.settings;
       let loadedCount = 0;
       
-      if (settings.token) {{
-        document.getElementById('token').value = settings.token;
+      // التحقق من وجود العناصر قبل تعيين القيم
+      const tokenEl = document.getElementById('token');
+      const idEl = document.getElementById('id');
+      const hlsEl = document.getElementById('hls');
+      const rtmpEl = document.getElementById('rtmp');
+      const imageEl = document.getElementById('image');
+      const extraEl = document.getElementById('extra');
+      
+      if (tokenEl && settings.token !== undefined && settings.token !== null && settings.token !== '') {{
+        tokenEl.value = settings.token;
         loadedCount++;
+        console.log('Loaded token:', settings.token);
       }}
-      if (settings.id) {{
-        document.getElementById('id').value = settings.id;
+      if (idEl && settings.id !== undefined && settings.id !== null && settings.id !== '') {{
+        idEl.value = settings.id;
         loadedCount++;
+        console.log('Loaded id:', settings.id);
       }}
-      if (settings.hls) {{
-        document.getElementById('hls').value = settings.hls;
+      if (hlsEl && settings.hls !== undefined && settings.hls !== null && settings.hls !== '') {{
+        hlsEl.value = settings.hls;
         loadedCount++;
+        console.log('Loaded hls:', settings.hls);
       }}
-      if (settings.rtmp) {{
-        document.getElementById('rtmp').value = settings.rtmp;
+      if (rtmpEl && settings.rtmp !== undefined && settings.rtmp !== null && settings.rtmp !== '') {{
+        rtmpEl.value = settings.rtmp;
         loadedCount++;
+        console.log('Loaded rtmp:', settings.rtmp);
       }}
-      if (settings.image) {{
-        document.getElementById('image').value = settings.image;
+      if (imageEl && settings.image !== undefined && settings.image !== null && settings.image !== '') {{
+        imageEl.value = settings.image;
         loadedCount++;
+        console.log('Loaded image:', settings.image);
       }}
-      if (settings.extra) {{
-        document.getElementById('extra').value = settings.extra;
+      if (extraEl && settings.extra !== undefined && settings.extra !== null && settings.extra !== '') {{
+        extraEl.value = settings.extra;
         loadedCount++;
+        console.log('Loaded extra:', settings.extra);
       }}
       
       if (loadedCount > 0) {{
-        console.log(`✅ تم تحميل ${{loadedCount}} إعدادات محفوظة`);
-        document.getElementById('out').textContent = `✅ تم تحميل الإعدادات المحفوظة (${{loadedCount}} حقول)`;
+        const message = `✅ تم تحميل الإعدادات المحفوظة (${{loadedCount}} حقول)`;
+        console.log(message);
+        document.getElementById('out').textContent = message;
       }} else {{
-        document.getElementById('out').textContent = `ℹ️ لا توجد إعدادات محفوظة`;
+        const message = `ℹ️ تم تحميل الإعدادات لكن جميع الحقول فارغة`;
+        console.log(message);
+        document.getElementById('out').textContent = message;
       }}
     }} else if (result.status === 'not_found') {{
       // No saved settings, use defaults - this is fine
-      console.log('ℹ️ لا توجد إعدادات محفوظة');
-      document.getElementById('out').textContent = `ℹ️ لا توجد إعدادات محفوظة، سيتم استخدام القيم الافتراضية`;
+      const message = `ℹ️ لا توجد إعدادات محفوظة، سيتم استخدام القيم الافتراضية`;
+      console.log(message);
+      document.getElementById('out').textContent = message;
+    }} else {{
+      console.log('Unexpected response:', result);
+      document.getElementById('out').textContent = `⚠️ استجابة غير متوقعة: ${{JSON.stringify(result)}}`;
     }}
   }} catch (error) {{
-    // Silently fail on load - don't disrupt user experience
     console.error('Error loading settings:', error);
     document.getElementById('out').textContent = `⚠️ خطأ في تحميل الإعدادات: ${{error.message}}`;
   }}
@@ -979,7 +1004,11 @@ async function loadSettings() {{
 
 // Load channels and streams on page load
 window.addEventListener('DOMContentLoaded', () => {{
-  loadSettings(); // Load saved settings first
+  console.log('DOM loaded, starting initialization...');
+  // تحميل الإعدادات أولاً مع تأخير صغير للتأكد من جاهزية DOM
+  setTimeout(() => {{
+    loadSettings();
+  }}, 200);
   loadChannels();
   startAutoRefresh();
 }});
