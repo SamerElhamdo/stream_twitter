@@ -241,7 +241,7 @@
     <label style="margin-top: 20px;">📋 FFmpeg Command (للنسخ والتجريب اليدوي)</label>
     <div style="position: relative;">
       <textarea id="ffmpegCommand" rows="4" readonly style="font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; background: #0a0a0a; color: #0a84ff; cursor: text; padding-right: 160px;" onclick="this.select();"></textarea>
-      <button onclick="generateFFmpegCommand()" style="position: absolute; top: 8px; right: 8px; padding: 6px 12px; font-size: 12px; background: #34c759; color: white; border: none; border-radius: 4px; cursor: pointer; z-index: 10; margin-right: 70px;" title="إعادة توليد الأمر">🔄 توليد</button>
+      <button id="generateCommandBtn" onclick="generateFFmpegCommand(); return false;" style="position: absolute; top: 8px; right: 8px; padding: 6px 12px; font-size: 12px; background: #34c759; color: white; border: none; border-radius: 4px; cursor: pointer; z-index: 10; margin-right: 70px;" title="إعادة توليد الأمر">🔄 توليد</button>
       <button onclick="copyFFmpegCommand(event)" style="position: absolute; top: 8px; right: 8px; padding: 6px 12px; font-size: 12px; background: #0a84ff; color: white; border: none; border-radius: 4px; cursor: pointer; z-index: 10;">📋 نسخ</button>
     </div>
     <small style="color: #666; display: block; margin-top: 4px;">
@@ -918,11 +918,23 @@ window.addEventListener('DOMContentLoaded', () => {
   loadChannels();
   startAutoRefresh();
   
-  // توليد الأمر الأولي بعد تحميل الصفحة
-  setTimeout(() => {
-    generateFFmpegCommand();
-  }, 1000);
-});
+    // توليد الأمر الأولي بعد تحميل الصفحة
+    setTimeout(() => {
+      generateFFmpegCommand();
+    }, 1000);
+    
+    // إضافة event listener للزر للتوليد اليدوي (للتأكد من عمله)
+    const generateBtn = document.getElementById('generateCommandBtn');
+    if (generateBtn) {
+      generateBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Generate button clicked manually');
+        generateFFmpegCommand();
+        return false;
+      });
+    }
+  });
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
@@ -961,12 +973,21 @@ async function apiCall(endpoint, method, payload = null) {
 }
 
 function generateFFmpegCommand() {
+  console.log('generateFFmpegCommand called');
   const hlsEl = document.getElementById('hls');
   const rtmpEl = document.getElementById('rtmp');
   const imageEl = document.getElementById('image');
   const extraEl = document.getElementById('extra');
+  const commandEl = document.getElementById('ffmpegCommand');
+  
+  if (!commandEl) {
+    console.error('ffmpegCommand element not found');
+    return;
+  }
   
   if (!hlsEl || !rtmpEl) {
+    console.error('hls or rtmp elements not found');
+    commandEl.value = '# خطأ: الحقول غير موجودة';
     return;
   }
   
@@ -975,26 +996,29 @@ function generateFFmpegCommand() {
   const image = imageEl ? imageEl.value.trim() : '';
   const extraRaw = extraEl ? extraEl.value.trim() : '';
   
-  // التحقق من القيم الفارغة فقط (تجاهل placeholders لأنها ستُستبدل تلقائياً)
+  console.log('HLS:', hls);
+  console.log('RTMP:', rtmp);
+  console.log('Image:', image);
+  console.log('Extra:', extraRaw);
+  
+  // التحقق من القيم الفارغة
   if (!hls || hls === '' || hls.trim() === '') {
-    document.getElementById('ffmpegCommand').value = '# املأ HLS URL أولاً';
+    commandEl.value = '# املأ HLS URL أولاً';
+    console.warn('HLS URL is empty');
     return;
   }
   
-  // التحقق من RTMP URL
+  // التحقق من RTMP URL - إذا كان placeholder، نستخدم القيمة الحالية على أي حال
   if (!rtmp || rtmp.trim() === '' || rtmp.trim() === '{RTMP_URL_PLACEHOLDER}') {
-    document.getElementById('ffmpegCommand').value = '# املأ RTMP URL';
+    commandEl.value = '# املأ RTMP URL';
+    console.warn('RTMP URL is empty');
     return;
   }
   
-  // إذا كان RTMP URL لا يزال placeholder (لم يتم استبداله بعد)، ننتظر
+  // إذا كان RTMP URL يحتوي على placeholder، نحاول استخدامه على أي حال (للتوليد اليدوي)
   if (rtmp.includes('{RTMP_URL_PLACEHOLDER}') || rtmp.includes('{TOKEN_PLACEHOLDER}')) {
-    // محاولة أخرى بعد قليل (placeholder سيتم استبداله تلقائياً من config)
-    setTimeout(() => {
-      generateFFmpegCommand();
-    }, 300);
-    document.getElementById('ffmpegCommand').value = '# جاري تحميل RTMP URL من الإعدادات...';
-    return;
+    console.warn('RTMP URL contains placeholder, generating command anyway');
+    // نستخدم القيمة الحالية حتى لو كانت placeholder (للتوليد اليدوي)
   }
   
   // بناء الأمر الأساسي (بسيط بدون flags إضافية)
@@ -1045,7 +1069,9 @@ function generateFFmpegCommand() {
   // Output format (بسيط بدون flags إضافية)
   command += ' -f flv "' + rtmp + '"';
   
-  document.getElementById('ffmpegCommand').value = command;
+  console.log('Generated command:', command);
+  commandEl.value = command;
+  console.log('Command set to element, value length:', commandEl.value.length);
 }
 
 function copyFFmpegCommand(event) {
