@@ -912,11 +912,15 @@ async function saveSettings() {{
     const result = await response.json();
     
     if (response.ok) {{
+      // إظهار رسالة تأكيد
+      alert('✅ تم حفظ الإعدادات بنجاح!');
       document.getElementById('out').textContent = `✅ الإعدادات تم حفظها بنجاح\\n${{JSON.stringify(result, null, 2)}}`;
     }} else {{
+      alert('❌ خطأ في حفظ الإعدادات: ' + (result.error || 'Unknown error'));
       document.getElementById('out').textContent = `❌ خطأ في حفظ الإعدادات: ${{result.error || 'Unknown error'}}`;
     }}
   }} catch (error) {{
+    alert('❌ خطأ: ' + error.message);
     document.getElementById('out').textContent = `❌ خطأ: ${{error.message}}`;
   }}
 }}
@@ -928,22 +932,48 @@ async function loadSettings() {{
     
     if (response.ok && result.status === 'loaded' && result.settings) {{
       const settings = result.settings;
+      let loadedCount = 0;
       
-      if (settings.token) document.getElementById('token').value = settings.token;
-      if (settings.id) document.getElementById('id').value = settings.id;
-      if (settings.hls) document.getElementById('hls').value = settings.hls;
-      if (settings.rtmp) document.getElementById('rtmp').value = settings.rtmp;
-      if (settings.image) document.getElementById('image').value = settings.image;
-      if (settings.extra) document.getElementById('extra').value = settings.extra;
+      if (settings.token) {{
+        document.getElementById('token').value = settings.token;
+        loadedCount++;
+      }}
+      if (settings.id) {{
+        document.getElementById('id').value = settings.id;
+        loadedCount++;
+      }}
+      if (settings.hls) {{
+        document.getElementById('hls').value = settings.hls;
+        loadedCount++;
+      }}
+      if (settings.rtmp) {{
+        document.getElementById('rtmp').value = settings.rtmp;
+        loadedCount++;
+      }}
+      if (settings.image) {{
+        document.getElementById('image').value = settings.image;
+        loadedCount++;
+      }}
+      if (settings.extra) {{
+        document.getElementById('extra').value = settings.extra;
+        loadedCount++;
+      }}
       
-      document.getElementById('out').textContent = `✅ تم تحميل الإعدادات المحفوظة`;
+      if (loadedCount > 0) {{
+        console.log(`✅ تم تحميل ${{loadedCount}} إعدادات محفوظة`);
+        document.getElementById('out').textContent = `✅ تم تحميل الإعدادات المحفوظة (${{loadedCount}} حقول)`;
+      }} else {{
+        document.getElementById('out').textContent = `ℹ️ لا توجد إعدادات محفوظة`;
+      }}
     }} else if (result.status === 'not_found') {{
       // No saved settings, use defaults - this is fine
+      console.log('ℹ️ لا توجد إعدادات محفوظة');
       document.getElementById('out').textContent = `ℹ️ لا توجد إعدادات محفوظة، سيتم استخدام القيم الافتراضية`;
     }}
   }} catch (error) {{
     // Silently fail on load - don't disrupt user experience
     console.error('Error loading settings:', error);
+    document.getElementById('out').textContent = `⚠️ خطأ في تحميل الإعدادات: ${{error.message}}`;
   }}
 }}
 
