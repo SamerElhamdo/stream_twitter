@@ -36,8 +36,127 @@ class StreamManager:
             return False
     
     @staticmethod
-    def _should_reencode(extra_args: Optional[list]) -> bool:
-        """Determine if video should be re-encoded based on extra args."""
+    def _check_video_codec(source_url: str) -> Optional[str]:
+        """
+        Check video codec of source stream using ffprobe.
+        
+        Args:
+            source_url: URL or path to the source stream
+            
+        Returns:
+            Codec name (e.g., 'hevc', 'h264') or None if check fails
+        """
+        try:
+            import json
+            
+            # Try to find ffprobe (usually next to ffmpeg)
+            ffprobe_bin = config.FFMPEG_BIN.replace("ffmpeg", "ffprobe")
+            if not pathlib.Path(ffprobe_bin).exists():
+                # Try common locations
+                for probe_path in ["/usr/bin/ffprobe", "/usr/local/bin/ffprobe"]:
+                    if pathlib.Path(probe_path).exists():
+                        ffprobe_bin = probe_path
+                        break
+                else:
+                    # ffprobe not found, skip check
+                    return None
+            
+            # Use ffprobe to get codec info (with timeout)
+            cmd = [
+                ffprobe_bin,
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_streams",
+                "-select_streams", "v:0",
+                "-timeout", "5000000",  # 5 second timeout in microseconds
+                source_url
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                if data.get("streams") and len(data["streams"]) > 0:
+                    codec = data["streams"][0].get("codec_name", "").lower()
+                    return codec
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError, Exception):
+            # If probe fails, return None (will try copy first)
+            pass
+        
+        return None
+    
+    @staticmethod
+    def _check_audio_codec(source_url: str) -> Optional[str]:
+        """
+        Check audio codec of source stream using ffprobe.
+        
+        Args:
+            source_url: URL or path to the source stream
+            
+        Returns:
+            Codec name (e.g., 'aac', 'mp3') or None if check fails
+        """
+        try:
+            import json
+            
+            # Try to find ffprobe
+            ffprobe_bin = config.FFMPEG_BIN.replace("ffmpeg", "ffprobe")
+            if not pathlib.Path(ffprobe_bin).exists():
+                for probe_path in ["/usr/bin/ffprobe", "/usr/local/bin/ffprobe"]:
+                    if pathlib.Path(probe_path).exists():
+                        ffprobe_bin = probe_path
+                        break
+                else:
+                    return None
+            
+            cmd = [
+                ffprobe_bin,
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_streams",
+                "-select_streams", "a:0",
+                "-timeout", "5000000",
+                source_url
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                if data.get("streams") and len(data["streams"]) > 0:
+                    codec = data["streams"][0].get("codec_name", "").lower()
+                    return codec
+        except Exception:
+            pass
+        
+        return None
+    
+    @staticmethod
+    def _should_reencode(extra_args: Optional[list], video_codec: Optional[str] = None) -> bool:
+        """
+        Determine if video should be re-encoded based on extra args or codec incompatibility.
+        
+        Args:
+            extra_args: Optional list of extra FFmpeg arguments
+            video_codec: Detected video codec name (e.g., 'hevc', 'h264')
+        
+        Returns:
+            True if re-encoding is needed, False otherwise
+        """
+        # Check if codec is incompatible with FLV (HEVC/H.265)
+        if video_codec and video_codec in ["hevc", "h265", "libx265", "hevc_amf", "hevc_nvenc"]:
+            return True
+        
         if not extra_args:
             return False
         
@@ -54,37 +173,86 @@ class StreamManager:
         rtmp: str, 
         extra_args: Optional[list] = None
     ) -> list:
-        """Build FFmpeg command arguments."""
+        """
+        Build FFmpeg command arguments with codec detection and stability improvements.
+        
+        Args:
+            hls: Input stream URL (HLS, TS, or other supported formats)
+            rtmp: Output RTMP stream URL
+            extra_args: Optional list of extra FFmpeg arguments
+            
+        Returns:
+            List of FFmpeg command arguments
+        """
         # Validate FFmpeg binary exists
         if not pathlib.Path(config.FFMPEG_BIN).exists():
             raise FileNotFoundError(
                 f"FFmpeg binary not found at {config.FFMPEG_BIN}"
             )
         
-        # Base args: input HLS with -re (read input at native frame rate)
-        args = [config.FFMPEG_BIN, "-re", "-i", hls]
+        # Check video and audio codecs before building args
+        video_codec = self._check_video_codec(hls)
+        audio_codec = self._check_audio_codec(hls)
         
-        # Add extra args if provided
+        # Base args with improved HLS/stream stability
+        args = [
+            config.FFMPEG_BIN,
+            "-re",  # Read input at native frame rate
+            "-fflags", "+genpts",  # Generate presentation timestamps
+            "-err_detect", "ignore_err",  # Ignore errors and continue
+            "-i", hls
+        ]
+        
+        # Add extra args if provided (user-defined filters, overlays, etc.)
         if extra_args:
             args += list(map(str, extra_args))
         
-        # Determine if re-encoding is needed
-        if self._should_reencode(extra_args):
+        # Determine if video re-encoding is needed
+        needs_video_reencode = self._should_reencode(extra_args, video_codec)
+        
+        if needs_video_reencode:
+            # Video re-encoding with optimized settings
+            bitrate_value = config.VIDEO_BITRATE.replace("k", "")
+            try:
+                bitrate_int = int(bitrate_value)
+                bufsize = bitrate_int * 2  # Buffer size = 2x bitrate
+            except ValueError:
+                bufsize = 4000  # Default fallback
+            
             args += [
                 "-c:v", config.VIDEO_CODEC,
                 "-preset", config.VIDEO_PRESET,
                 "-tune", config.VIDEO_TUNE,
-                "-b:v", config.VIDEO_BITRATE
+                "-b:v", config.VIDEO_BITRATE,
+                "-maxrate", config.VIDEO_BITRATE,  # Max bitrate
+                "-bufsize", f"{bufsize}k",  # Buffer size
+                "-g", "50",  # GOP size (keyframe interval)
+                "-keyint_min", "25",  # Minimum keyframe interval
+                "-sc_threshold", "0",  # Scene change threshold (disable)
+                "-pix_fmt", "yuv420p",  # Pixel format for compatibility
             ]
         else:
+            # Video copy (like your old method)
             args += ["-c:v", "copy"]
         
-        # Audio encoding (always encode audio for RTMP compatibility)
+        # Audio handling: try copy first if compatible (like your old method)
+        # FFmpeg will automatically re-encode if codec is incompatible with RTMP
+        if audio_codec and audio_codec in ["aac", "libfdk_aac", "aac_latm"]:
+            # AAC is compatible with RTMP/FLV, use copy
+            args += ["-c:a", "copy"]
+        else:
+            # Re-encode audio for RTMP compatibility
+            args += [
+                "-c:a", config.AUDIO_CODEC,
+                "-ar", config.AUDIO_SAMPLE_RATE,
+                "-b:a", config.AUDIO_BITRATE
+            ]
+        
+        # Output format with stability flags
         args += [
-            "-c:a", config.AUDIO_CODEC,
-            "-ar", config.AUDIO_SAMPLE_RATE,
-            "-b:a", config.AUDIO_BITRATE,
             "-f", "flv",
+            "-flvflags", "no_duration_filesize",  # Don't update duration/filesize in header (prevents errors)
+            "-avoid_negative_ts", "make_zero",  # Handle negative timestamps
             rtmp
         ]
         
