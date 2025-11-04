@@ -616,10 +616,10 @@ def ui():
     <input id="rtmp" value="" placeholder="Output RTMP stream URL" />
     
     <label>Image Path (optional)</label>
-    <input id="image" value="{config.OVERLAY_IMAGE_DEFAULT}" placeholder="Path to overlay image" />
+    <input id="image" value="" placeholder="Path to overlay image" />
     
     <label>Extra Args (JSON array) — leave empty to copy video</label>
-    <textarea id="extra" rows="4" placeholder='["-i", "/path/to/image.png", "-filter_complex", "..."]'>["-i","{config.OVERLAY_IMAGE_DEFAULT}","-filter_complex","[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto"]</textarea>
+    <textarea id="extra" rows="4"></textarea>
   </div>
 
   <div class="button-group">
