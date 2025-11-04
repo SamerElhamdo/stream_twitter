@@ -190,10 +190,12 @@ class StreamManager:
                 f"FFmpeg binary not found at {config.FFMPEG_BIN}"
             )
         
-        # Base args: simple like your old working command
+        # Base args: simple like your old working command with stability improvements
         args = [
             config.FFMPEG_BIN,
             "-re",  # Read input at native frame rate
+            "-fflags", "+genpts",  # Generate presentation timestamps (prevents sync issues)
+            "-err_detect", "ignore_err",  # Ignore errors and continue streaming
             "-i", hls
         ]
         
@@ -238,9 +240,13 @@ class StreamManager:
         # Audio: always copy (like your old method)
         args += ["-c:a", "copy"]
         
-        # Output format: simple like your old command
+        # Output format with stability flags
         args += [
             "-f", "flv",
+            "-flvflags", "no_duration_filesize",  # Don't update header (prevents "Failed to update" errors)
+            "-avoid_negative_ts", "make_zero",  # Handle negative timestamps
+            "-rtmp_live", "live",  # RTMP live mode
+            "-rtmp_buffer", "1000",  # RTMP buffer size in milliseconds
             rtmp
         ]
         
