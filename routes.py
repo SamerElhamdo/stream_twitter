@@ -728,12 +728,10 @@ async function refreshStreamsTable() {{
               <td>${{logSize}}</td>
               <td>
                 <div class="action-buttons">
-                  ${{stream.running ? `
-                    <button onclick="stopStream('${{stream.id}}')" style="background: #ff3b30;">Stop</button>
-                    <button onclick="viewStreamLogs('${{stream.id}}')">Logs</button>
-                  ` : `
-                    <button onclick="cleanupStream('${{stream.id}}')" style="background: #666;">Cleanup</button>
-                  `}}
+                  ${{stream.running ? 
+                    `<button onclick="stopStream('${{{{stream.id}}}}')" style="background: #ff3b30;">Stop</button><button onclick="viewStreamLogs('${{{{stream.id}}}}')">Logs</button>` : 
+                    `<button onclick="cleanupStream('${{{{stream.id}}}}')" style="background: #666;">Cleanup</button>`
+                  }}
                 </div>
               </td>
             </tr>
@@ -764,7 +762,7 @@ async function refreshStreamsTable() {{
 }}
 
 async function stopStream(streamId) {{
-  if (!confirm(`Are you sure you want to stop stream "${{streamId}}"?')) {{
+  if (!confirm(`Are you sure you want to stop stream "${{streamId}}"?`)) {{
     return;
   }}
   
