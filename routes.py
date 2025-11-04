@@ -839,20 +839,38 @@ function selectChannel() {{
   }}
 }}
 
+// متغيرات للتحكم في event listeners
+let previewVideoListeners = {{}};
+
 function playPreview() {{
   const previewVideo = document.getElementById('previewVideo');
+  const previewSource = document.getElementById('previewVideoSource');
   const previewStatus = document.getElementById('previewStatus');
   
-  // إزالة event listeners السابقة لتجنب التكرار
-  const newVideo = previewVideo.cloneNode(true);
-  previewVideo.parentNode.replaceChild(newVideo, previewVideo);
-  const updatedVideo = document.getElementById('previewVideo');
+  if (!previewVideo || !previewSource || !previewStatus) {{
+    console.error('Preview elements not found');
+    return;
+  }}
+  
+  // التحقق من وجود المصدر
+  const videoSrc = previewSource.src || previewVideo.src;
+  if (!videoSrc || videoSrc.trim() === '') {{
+    previewStatus.textContent = '⚠️ يرجى اختيار قناة أولاً';
+    previewStatus.style.color = '#ff9500';
+    return;
+  }}
+  
+  // إزالة event listeners السابقة
+  Object.keys(previewVideoListeners).forEach(event => {{
+    previewVideo.removeEventListener(event, previewVideoListeners[event]);
+  }});
+  previewVideoListeners = {{}};
   
   // إعداد timeout للتأخير
   let timeoutId;
   let isPlaying = false;
   
-  const clearTimeout = () => {{
+  const clearTimeoutHandler = () => {{
     if (timeoutId) {{
       window.clearTimeout(timeoutId);
       timeoutId = null;
@@ -863,27 +881,32 @@ function playPreview() {{
     previewStatus.textContent = 'جاري التشغيل...';
     previewStatus.style.color = '#0a84ff';
     
+    // إعادة تحميل المصدر
+    previewVideo.load();
+    
     // timeout لمدة 15 ثانية للتأخير
     timeoutId = setTimeout(() => {{
       if (!isPlaying) {{
-        previewStatus.textContent = '⏱️ وقت الانتظار انتهى - المصدر بطيء';
+        previewStatus.textContent = '⏱️ وقت الانتظار انتهى - المصدر بطيء أو غير متاح';
         previewStatus.style.color = '#ff9500';
         console.warn('Video loading timeout');
       }}
     }}, 15000);
     
     // event listener للنجاح
-    updatedVideo.addEventListener('playing', () => {{
-      clearTimeout();
+    const playingHandler = () => {{
+      clearTimeoutHandler();
       isPlaying = true;
       previewStatus.textContent = '✅ يعمل';
       previewStatus.style.color = '#34c759';
-    }}, {{ once: true }});
+    }};
+    previewVideo.addEventListener('playing', playingHandler, {{ once: true }});
+    previewVideoListeners['playing'] = playingHandler;
     
     // event listener للأخطاء
-    updatedVideo.addEventListener('error', (e) => {{
-      clearTimeout();
-      const error = updatedVideo.error;
+    const errorHandler = (e) => {{
+      clearTimeoutHandler();
+      const error = previewVideo.error;
       let errorMsg = '❌ خطأ: المصدر غير متاح';
       
       if (error) {{
@@ -892,56 +915,73 @@ function playPreview() {{
             errorMsg = '❌ تم إلغاء التحميل';
             break;
           case error.MEDIA_ERR_NETWORK:
-            errorMsg = '❌ خطأ في الشبكة';
+            errorMsg = '❌ خطأ في الشبكة - تحقق من الاتصال';
             break;
           case error.MEDIA_ERR_DECODE:
             errorMsg = '❌ خطأ في فك التشفير';
             break;
           case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = '❌ المصدر غير مدعوم';
+            errorMsg = '❌ المصدر غير مدعوم - قد يحتاج HLS.js';
             break;
         }}
+      }} else if (e && e.message) {{
+        errorMsg = '❌ ' + e.message;
       }}
       
       previewStatus.textContent = errorMsg;
       previewStatus.style.color = '#ff3b30';
       console.error('Video error:', error, e);
-    }}, {{ once: true }});
+    }};
+    previewVideo.addEventListener('error', errorHandler, {{ once: true }});
+    previewVideoListeners['error'] = errorHandler;
     
     // event listener للتحميل
-    updatedVideo.addEventListener('waiting', () => {{
+    const waitingHandler = () => {{
       if (!isPlaying) {{
         previewStatus.textContent = '⏳ جاري التحميل...';
         previewStatus.style.color = '#ff9500';
       }}
-    }});
+    }};
+    previewVideo.addEventListener('waiting', waitingHandler);
+    previewVideoListeners['waiting'] = waitingHandler;
     
-    updatedVideo.addEventListener('canplay', () => {{
+    const canplayHandler = () => {{
       previewStatus.textContent = '📺 جاهز للتشغيل';
       previewStatus.style.color = '#0a84ff';
-    }}, {{ once: true }});
+    }};
+    previewVideo.addEventListener('canplay', canplayHandler, {{ once: true }});
+    previewVideoListeners['canplay'] = canplayHandler;
     
     // محاولة التشغيل
-    const playPromise = updatedVideo.play();
+    const playPromise = previewVideo.play();
     
     if (playPromise !== undefined) {{
       playPromise.then(() => {{
-        clearTimeout();
+        clearTimeoutHandler();
         isPlaying = true;
         previewStatus.textContent = '✅ يعمل';
         previewStatus.style.color = '#34c759';
       }}).catch((error) => {{
-        clearTimeout();
-        // تجاهل AbortError - يحدث عند تغيير المصدر
-        if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {{
+        clearTimeoutHandler();
+        // تجاهل AbortError و NotAllowedError - أخطاء طبيعية
+        if (error.name === 'AbortError' || error.name === 'NotAllowedError') {{
+          console.log('Play interrupted (normal):', error.name);
+          return;
+        }}
+        
+        // NotSupportedError يعني أن المصدر غير مدعوم (قد يحتاج HLS.js)
+        if (error.name === 'NotSupportedError') {{
+          previewStatus.textContent = '⚠️ المصدر قد يحتاج HLS.js - بعض المتصفحات لا تدعم HLS مباشرة';
+          previewStatus.style.color = '#ff9500';
+        }} else {{
           previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
           previewStatus.style.color = '#ff3b30';
-          console.error('Play error:', error);
         }}
+        console.error('Play error:', error);
       }});
     }}
   }} catch (error) {{
-    clearTimeout();
+    clearTimeoutHandler();
     // تجاهل AbortError
     if (error.name !== 'AbortError') {{
       previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
@@ -956,15 +996,21 @@ function stopPreview() {{
   const previewStatus = document.getElementById('previewStatus');
   
   try {{
+    // إزالة event listeners
+    Object.keys(previewVideoListeners).forEach(event => {{
+      if (previewVideo) {{
+        previewVideo.removeEventListener(event, previewVideoListeners[event]);
+      }}
+    }});
+    previewVideoListeners = {{}};
+    
     // إيقاف التشغيل بشكل آمن
-    if (previewVideo && !previewVideo.paused) {{
-      previewVideo.pause();
-    }}
     if (previewVideo) {{
+      if (!previewVideo.paused) {{
+        previewVideo.pause();
+      }}
       previewVideo.currentTime = 0;
-      // إزالة المصدر لتجنب AbortError
-      previewVideo.src = '';
-      previewVideo.load();
+      // لا نزيل المصدر - فقط نوقف
     }}
     if (previewStatus) {{
       previewStatus.textContent = 'متوقف';
