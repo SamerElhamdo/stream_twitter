@@ -578,6 +578,37 @@ def ui():
       resize: vertical;
       min-height: 80px;
     }}
+    .video-preview {{
+      margin-top: 12px;
+      display: none;
+    }}
+    .video-preview.active {{
+      display: block;
+    }}
+    .video-preview video {{
+      width: 240px;
+      height: 135px;
+      background: #000;
+      border: 2px solid #333;
+      border-radius: 4px;
+      object-fit: contain;
+    }}
+    .video-preview-controls {{
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      align-items: center;
+    }}
+    .video-preview-controls button {{
+      padding: 6px 12px;
+      font-size: 12px;
+      margin: 0;
+    }}
+    .video-preview-status {{
+      font-size: 11px;
+      color: #666;
+      margin-left: 8px;
+    }}
   </style>
 </head>
 <body>
@@ -599,6 +630,19 @@ def ui():
     <small style="color: #666; display: block; margin-top: -8px; margin-bottom: 12px;">
       Total channels: <span id="channelCount">0</span>
     </small>
+    
+    <div class="video-preview" id="videoPreview">
+      <label style="margin-top: 16px; display: block;">معاينة القناة</label>
+      <video id="previewVideo" controls muted>
+        <source id="previewVideoSource" src="" type="application/x-mpegURL">
+        المتصفح لا يدعم مشغل HLS. يرجى استخدام متصفح حديث.
+      </video>
+      <div class="video-preview-controls">
+        <button onclick="playPreview()" style="background: #34c759;">▶ تشغيل</button>
+        <button onclick="stopPreview()" style="background: #ff3b30;">⏹ إيقاف</button>
+        <span class="video-preview-status" id="previewStatus"></span>
+      </div>
+    </div>
   </div>
   
   <div class="section">
@@ -766,7 +810,67 @@ function selectChannel() {{
     document.getElementById('id').value = channel.name.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'channel_stream';
     
     document.getElementById('out').textContent = `Selected channel: ${{channel.name}}\\nGroup: ${{channel.group || 'N/A'}}\\nURL: ${{channel.url}}`;
+    
+    // إظهار مشغل المعاينة وإعداد URL
+    if (channel.url) {{
+      const previewDiv = document.getElementById('videoPreview');
+      const previewVideo = document.getElementById('previewVideo');
+      const previewSource = document.getElementById('previewVideoSource');
+      const previewStatus = document.getElementById('previewStatus');
+      
+      previewDiv.classList.add('active');
+      previewSource.src = channel.url;
+      previewVideo.load();
+      previewStatus.textContent = `جاهز: ${{channel.name}}`;
+      previewStatus.style.color = '#34c759';
+    }}
+  }} else {{
+    // إخفاء مشغل المعاينة
+    const previewDiv = document.getElementById('videoPreview');
+    previewDiv.classList.remove('active');
+    stopPreview();
   }}
+}}
+
+function playPreview() {{
+  const previewVideo = document.getElementById('previewVideo');
+  const previewStatus = document.getElementById('previewStatus');
+  
+  try {{
+    previewVideo.play();
+    previewStatus.textContent = 'جاري التشغيل...';
+    previewStatus.style.color = '#0a84ff';
+    
+    previewVideo.addEventListener('playing', () => {{
+      previewStatus.textContent = '✅ يعمل';
+      previewStatus.style.color = '#34c759';
+    }});
+    
+    previewVideo.addEventListener('error', (e) => {{
+      previewStatus.textContent = '❌ خطأ: المصدر غير متاح';
+      previewStatus.style.color = '#ff3b30';
+      console.error('Video error:', e);
+    }});
+    
+    previewVideo.addEventListener('waiting', () => {{
+      previewStatus.textContent = '⏳ جاري التحميل...';
+      previewStatus.style.color = '#ff9500';
+    }});
+  }} catch (error) {{
+    previewStatus.textContent = '❌ خطأ في التشغيل: ' + error.message;
+    previewStatus.style.color = '#ff3b30';
+    console.error('Play error:', error);
+  }}
+}}
+
+function stopPreview() {{
+  const previewVideo = document.getElementById('previewVideo');
+  const previewStatus = document.getElementById('previewStatus');
+  
+  previewVideo.pause();
+  previewVideo.currentTime = 0;
+  previewStatus.textContent = 'متوقف';
+  previewStatus.style.color = '#666';
 }}
 
 // Streams table management
