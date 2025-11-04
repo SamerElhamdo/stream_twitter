@@ -237,6 +237,15 @@
     
     <label>Extra Args (JSON array) — leave empty to copy video</label>
     <textarea id="extra" rows="4"></textarea>
+    
+    <label style="margin-top: 20px;">📋 FFmpeg Command (للنسخ والتجريب اليدوي)</label>
+    <div style="position: relative;">
+      <textarea id="ffmpegCommand" rows="4" readonly style="font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; background: #0a0a0a; color: #0a84ff; cursor: text; padding-right: 80px;" onclick="this.select();"></textarea>
+      <button onclick="copyFFmpegCommand(event)" style="position: absolute; top: 8px; right: 8px; padding: 6px 12px; font-size: 12px; background: #0a84ff; color: white; border: none; border-radius: 4px; cursor: pointer; z-index: 10;">📋 نسخ</button>
+    </div>
+    <small style="color: #666; display: block; margin-top: 4px;">
+      انقر على الحقل لاختيار النص بالكامل، أو استخدم زر النسخ | يتم التحديث تلقائياً عند تغيير الحقول
+    </small>
   </div>
 
   <div class="button-group">
@@ -881,9 +890,28 @@ window.addEventListener('DOMContentLoaded', () => {
   // تحميل الإعدادات أولاً مع تأخير صغير للتأكد من جاهزية DOM
   setTimeout(() => {
     loadSettings();
+    // توليد الأمر بعد تحميل الإعدادات
+    setTimeout(() => {
+      generateFFmpegCommand();
+    }, 300);
   }, 200);
   loadChannels();
   startAutoRefresh();
+  
+  // إضافة event listeners لتحديث الأمر تلقائياً
+  const hlsInput = document.getElementById('hls');
+  const rtmpInput = document.getElementById('rtmp');
+  const imageInput = document.getElementById('image');
+  const extraInput = document.getElementById('extra');
+  
+  if (hlsInput) hlsInput.addEventListener('input', generateFFmpegCommand);
+  if (hlsInput) hlsInput.addEventListener('change', generateFFmpegCommand);
+  if (rtmpInput) rtmpInput.addEventListener('input', generateFFmpegCommand);
+  if (rtmpInput) rtmpInput.addEventListener('change', generateFFmpegCommand);
+  if (imageInput) imageInput.addEventListener('input', generateFFmpegCommand);
+  if (imageInput) imageInput.addEventListener('change', generateFFmpegCommand);
+  if (extraInput) extraInput.addEventListener('input', generateFFmpegCommand);
+  if (extraInput) extraInput.addEventListener('change', generateFFmpegCommand);
 });
 
 // Cleanup on page unload
@@ -919,6 +947,130 @@ async function apiCall(endpoint, method, payload = null) {
     document.getElementById('out').textContent = output;
   } catch (error) {
     document.getElementById('out').textContent = `Error: ${error.message}`;
+  }
+}
+
+function generateFFmpegCommand() {
+  const hls = document.getElementById('hls').value.trim();
+  const rtmp = document.getElementById('rtmp').value.trim();
+  const image = document.getElementById('image').value.trim();
+  const extraRaw = document.getElementById('extra').value.trim();
+  
+  if (!hls || !rtmp) {
+    document.getElementById('ffmpegCommand').value = '# املأ HLS URL و RTMP URL أولاً';
+    return;
+  }
+  
+  // بناء الأمر الأساسي
+  let command = 'ffmpeg -re -fflags +genpts -err_detect ignore_err -i "' + hls + '"';
+  
+  // إضافة image إذا كان موجود
+  if (image && image !== '') {
+    command += ' -i "' + image + '"';
+  }
+  
+  // إضافة extra_args إذا كانت موجودة
+  if (extraRaw && extraRaw !== '') {
+    try {
+      const parsed = JSON.parse(extraRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // إضافة extra args
+        parsed.forEach(arg => {
+          command += ' ' + arg;
+        });
+        // إذا كان هناك filters، نحتاج re-encoding
+        const argsStr = parsed.join(' ').toLowerCase();
+        const hasFilters = argsStr.includes('-filter_complex') || argsStr.includes('-vf') || 
+                          argsStr.includes('overlay') || argsStr.includes('scale') || 
+                          argsStr.includes('crop');
+        
+        if (hasFilters) {
+          command += ' -c:v libx264 -preset veryfast -tune zerolatency -b:v 2000k -g 50 -keyint_min 25 -sc_threshold 0 -pix_fmt yuv420p';
+        } else {
+          command += ' -c:v copy';
+        }
+      } else {
+        command += ' -c:v copy';
+      }
+    } catch (e) {
+      command += ' -c:v copy';
+    }
+  } else if (image && image !== '') {
+    // إذا كان هناك image فقط، نحتاج re-encoding
+    command += ' -filter_complex "[0:v][1:v]overlay=(W-w)/2:(H-h)/2:format=auto" -c:v libx264 -preset veryfast -tune zerolatency -b:v 2000k -g 50 -keyint_min 25 -sc_threshold 0 -pix_fmt yuv420p';
+  } else {
+    // نسخ مباشر
+    command += ' -c:v copy';
+  }
+  
+  // الصوت دائماً copy
+  command += ' -c:a copy';
+  
+  // Output format
+  command += ' -f flv -flvflags no_duration_filesize -avoid_negative_ts make_zero "' + rtmp + '"';
+  
+  document.getElementById('ffmpegCommand').value = command;
+}
+
+function copyFFmpegCommand(event) {
+  const commandField = document.getElementById('ffmpegCommand');
+  if (!commandField || !commandField.value || commandField.value.startsWith('#')) {
+    alert('لا يوجد أمر للنسخ. املأ HLS URL و RTMP URL أولاً.');
+    return;
+  }
+  
+  commandField.select();
+  commandField.setSelectionRange(0, 99999); // For mobile devices
+  
+  try {
+    const successful = document.execCommand('copy');
+    if (successful) {
+      // إظهار رسالة تأكيد
+      const button = event.target;
+      const originalText = button.textContent;
+      button.textContent = '✅ تم النسخ!';
+      button.style.background = '#34c759';
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.background = '#0a84ff';
+      }, 2000);
+    } else {
+      // Fallback: استخدام Clipboard API الحديث
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(commandField.value).then(() => {
+          const button = event.target;
+          const originalText = button.textContent;
+          button.textContent = '✅ تم النسخ!';
+          button.style.background = '#34c759';
+          setTimeout(() => {
+            button.textContent = originalText;
+            button.style.background = '#0a84ff';
+          }, 2000);
+        }).catch(() => {
+          alert('فشل النسخ. حاول تحديد النص يدوياً ونسخه (Ctrl+C أو Cmd+C).');
+        });
+      } else {
+        alert('فشل النسخ. حاول تحديد النص يدوياً ونسخه (Ctrl+C أو Cmd+C).');
+      }
+    }
+  } catch (err) {
+    // Fallback: استخدام Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(commandField.value).then(() => {
+        const button = event.target;
+        const originalText = button.textContent;
+        button.textContent = '✅ تم النسخ!';
+        button.style.background = '#34c759';
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.style.background = '#0a84ff';
+        }, 2000);
+      }).catch(() => {
+        alert('فشل النسخ. حاول تحديد النص يدوياً ونسخه.');
+      });
+    } else {
+      alert('فشل النسخ. حاول تحديد النص يدوياً ونسخه.');
+    }
   }
 }
 
