@@ -324,14 +324,14 @@ async function uploadM3U() {
     const result = await response.json();
     
     if (response.ok) {
-      document.getElementById('out').textContent = `File uploaded successfully: ${result.filename}\\n\\n${JSON.stringify(result, null, 2)}`;
+      document.getElementById('out').textContent = 'File uploaded successfully: ' + result.filename + '\n\n' + JSON.stringify(result, null, 2);
       // Automatically load channels after upload
       await loadChannels();
     } else {
-      document.getElementById('out').textContent = `Error: ${result.error}`;
+      document.getElementById('out').textContent = 'Error: ' + result.error;
     }
   } catch (error) {
-    document.getElementById('out').textContent = `Error: ${error.message}`;
+    document.getElementById('out').textContent = 'Error: ' + error.message;
   }
 }
 
@@ -373,12 +373,12 @@ async function loadChannels() {
       });
       
       document.getElementById('channelCount').textContent = result.count;
-      document.getElementById('out').textContent = `Loaded ${result.count} channels from M3U file`;
+      document.getElementById('out').textContent = 'Loaded ' + result.count + ' channels from M3U file';
     } else {
-      document.getElementById('out').textContent = `Error: ${result.error || 'Failed to load channels'}`;
+      document.getElementById('out').textContent = 'Error: ' + (result.error || 'Failed to load channels');
     }
   } catch (error) {
-    document.getElementById('out').textContent = `Error: ${error.message}`;
+    document.getElementById('out').textContent = 'Error: ' + error.message;
   }
 }
 
@@ -391,7 +391,7 @@ function selectChannel() {
     document.getElementById('hls').value = channel.url || '';
     document.getElementById('id').value = channel.name.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'channel_stream';
     
-    document.getElementById('out').textContent = `Selected channel: ${channel.name}\\nGroup: ${channel.group || 'N/A'}\\nURL: ${channel.url}`;
+    document.getElementById('out').textContent = 'Selected channel: ' + channel.name + '\nGroup: ' + (channel.group || 'N/A') + '\nURL: ' + channel.url;
     
     // فحص المصدر تلقائياً عند اختيار القناة
     if (channel.url) {
@@ -428,7 +428,7 @@ async function checkSource(url, channelName) {
   // إظهار حالة الفحص
   statusDiv.classList.add('active', 'checking');
   statusDiv.classList.remove('available', 'unavailable', 'timeout');
-  statusText.textContent = `⏳ جاري فحص المصدر: ${channelName || '...'}`;
+  statusText.textContent = '⏳ جاري فحص المصدر: ' + (channelName || '...');
   
   try {
     const response = await fetch('/source/check', {
@@ -447,19 +447,19 @@ async function checkSource(url, channelName) {
     
     if (result.status === 'available') {
       statusDiv.classList.add('available');
-      statusText.textContent = `✅ المصدر متاح (${result.response_time}s) - ${channelName || 'قناة'}`;
+      statusText.textContent = '✅ المصدر متاح (' + result.response_time + 's) - ' + (channelName || 'قناة');
       console.log('Source check successful:', result);
     } else if (result.status === 'timeout') {
       statusDiv.classList.add('timeout');
-      statusText.textContent = `⏱️ ${result.message} (${result.response_time}s)`;
+      statusText.textContent = '⏱️ ' + result.message + ' (' + result.response_time + 's)';
       console.warn('Source check timeout:', result);
     } else if (result.status === 'unavailable' || result.status === 'error') {
       statusDiv.classList.add('unavailable');
-      statusText.textContent = `❌ ${result.message}`;
+      statusText.textContent = '❌ ' + result.message;
       console.error('Source check failed:', result);
     } else {
       statusDiv.classList.add('unavailable');
-      statusText.textContent = `⚠️ حالة غير معروفة: ${result.status}`;
+      statusText.textContent = '⚠️ حالة غير معروفة: ' + result.status;
     }
     
     // إيقاف عملية الفحص بعد الانتهاء
@@ -478,7 +478,7 @@ async function checkSource(url, channelName) {
     // إظهار خطأ
     statusDiv.classList.remove('checking');
     statusDiv.classList.add('unavailable');
-    statusText.textContent = `❌ خطأ في فحص المصدر: ${error.message}`;
+    statusText.textContent = '❌ خطأ في فحص المصدر: ' + error.message;
     console.error('Source check error:', error);
   }
 }
@@ -493,11 +493,11 @@ function formatUptime(seconds) {
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
   if (hours > 0) {
-    return `${hours}h ${minutes}m ${secs}s`;
+    return hours + 'h ' + minutes + 'm ' + secs + 's';
   } else if (minutes > 0) {
-    return `${minutes}m ${secs}s`;
+    return minutes + 'm ' + secs + 's';
   } else {
-    return `${secs}s`;
+    return secs + 's';
   }
 }
 
@@ -523,16 +523,10 @@ async function refreshStreamsTable() {
     
     if (response.ok && result.streams) {
       const streams = result.streams;
-      countSpan.textContent = `(${streams.length})`;
+      countSpan.textContent = '(' + streams.length + ')';
       
       if (streams.length === 0) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="6" style="text-align: center; color: #666; padding: 20px;">
-              No streams found
-            </td>
-          </tr>
-        `;
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666; padding: 20px;">No streams found</td></tr>';
       } else {
         tbody.innerHTML = streams.map(stream => {
           const statusClass = stream.running ? 'status-running' : 'status-stopped';
@@ -541,58 +535,41 @@ async function refreshStreamsTable() {
           const logSize = formatSize(stream.log_size || 0);
           const streamId = stream.id;
           
-          return `
-            <tr>
-              <td><strong>${stream.id}</strong></td>
-              <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-              <td style="font-family: monospace;">${stream.pid || 'N/A'}</td>
-              <td>${uptime}</td>
-              <td>${logSize}</td>
-              <td>
-                <div class="action-buttons">
-                  ${stream.running ? 
-                    `<button onclick="stopStream('` + streamId + `')" style="background: #ff3b30;" title="إيقاف المعالجة">⏹ إيقاف</button>
-                     <button onclick="viewStreamLogs('` + streamId + `')" title="عرض السجلات">📄 سجلات</button>
-                     <button onclick="killAndDeleteStream('` + streamId + `')" style="background: #8e0000;" title="قتل وحذف المعالجة">🗑️ حذف</button>` : 
-                    `<button onclick="cleanupStream('` + streamId + `')" style="background: #666;" title="تنظيف وحذف المعالجة العالقة">🗑️ حذف</button>`
-                  }
-                </div>
-              </td>
-            </tr>
-          `;
+          const actionButtons = stream.running ? 
+            '<button onclick="stopStream(\'' + streamId + '\')" style="background: #ff3b30;" title="إيقاف المعالجة">⏹ إيقاف</button>' +
+            '<button onclick="viewStreamLogs(\'' + streamId + '\')" title="عرض السجلات">📄 سجلات</button>' +
+            '<button onclick="killAndDeleteStream(\'' + streamId + '\')" style="background: #8e0000;" title="قتل وحذف المعالجة">🗑️ حذف</button>' :
+            '<button onclick="cleanupStream(\'' + streamId + '\')" style="background: #666;" title="تنظيف وحذف المعالجة العالقة">🗑️ حذف</button>';
+          
+          return '<tr>' +
+            '<td><strong>' + stream.id + '</strong></td>' +
+            '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
+            '<td style="font-family: monospace;">' + (stream.pid || 'N/A') + '</td>' +
+            '<td>' + uptime + '</td>' +
+            '<td>' + logSize + '</td>' +
+            '<td><div class="action-buttons">' + actionButtons + '</div></td>' +
+            '</tr>';
         }).join('');
       }
       
       document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
     } else {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="6" style="text-align: center; color: #ff3b30; padding: 20px;">
-            Error loading streams: ${result.error || 'Unknown error'}
-          </td>
-        </tr>
-      `;
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff3b30; padding: 20px;">Error loading streams: ' + (result.error || 'Unknown error') + '</td></tr>';
     }
   } catch (error) {
     const tbody = document.getElementById('streamsTableBody');
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="6" style="text-align: center; color: #ff3b30; padding: 20px;">
-          Error: ${error.message}
-        </td>
-      </tr>
-    `;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff3b30; padding: 20px;">Error: ' + error.message + '</td></tr>';
   }
 }
 
 async function stopStream(streamId) {
-  if (!confirm(`هل أنت متأكد من إيقاف المعالجة "${streamId}"?`)) {
+  if (!confirm('هل أنت متأكد من إيقاف المعالجة "' + streamId + '"?')) {
     return;
   }
   
   try {
     // إظهار حالة التحميل
-    const row = document.querySelector(`tr:has(button[onclick*="'${streamId}'"])`);
+    const row = document.querySelector('tr:has(button[onclick*="\'' + streamId + '\'"])');
     if (row) {
       const statusBadge = row.querySelector('.status-badge');
       if (statusBadge) {
@@ -613,8 +590,8 @@ async function stopStream(streamId) {
     const result = await response.json();
     
     if (response.ok) {
-      alert(`✅ تم إيقاف المعالجة "${streamId}" بنجاح`);
-      document.getElementById('out').textContent = `✅ تم إيقاف المعالجة "${streamId}" بنجاح\\n${JSON.stringify(result, null, 2)}`;
+      alert('✅ تم إيقاف المعالجة \"' + streamId + '\" بنجاح');
+      document.getElementById('out').textContent = '✅ تم إيقاف المعالجة "' + streamId + '" بنجاح\n' + JSON.stringify(result, null, 2);
       
       // تحديث الجدول مع أنيميشن
       if (row) {
@@ -627,14 +604,14 @@ async function stopStream(streamId) {
         setTimeout(refreshStreamsTable, 500);
       }
     } else {
-      alert(`❌ خطأ في إيقاف المعالجة: ${result.error || 'Unknown error'}`);
-      document.getElementById('out').textContent = `❌ خطأ في إيقاف المعالجة: ${result.error || 'Unknown error'}`;
+      alert('❌ خطأ في إيقاف المعالجة: ' + (result.error || 'Unknown error'));
+      document.getElementById('out').textContent = '❌ خطأ في إيقاف المعالجة: ' + (result.error || 'Unknown error');
       // إعادة تحديث الجدول لإزالة حالة التحميل
       setTimeout(refreshStreamsTable, 500);
     }
   } catch (error) {
-    alert(`❌ خطأ: ${error.message}`);
-    document.getElementById('out').textContent = `❌ خطأ: ${error.message}`;
+    alert('❌ خطأ: ' + error.message);
+    document.getElementById('out').textContent = '❌ خطأ: ' + error.message;
     setTimeout(refreshStreamsTable, 500);
   }
 }
@@ -645,13 +622,13 @@ async function viewStreamLogs(streamId) {
 }
 
 async function killAndDeleteStream(streamId) {
-  if (!confirm(`⚠️ تحذير: هل أنت متأكد من قتل وحذف المعالجة "${streamId}"?\\n\\nسيتم:\\n- قتل العملية الخاصة بهذه المعالجة فقط\\n- حذف ملفات PID والسجلات المتعلقة\\n\\n⚠️ سيتم التأثير فقط على معالجات هذا المشروع`)) {
+  if (!confirm('⚠️ تحذير: هل أنت متأكد من قتل وحذف المعالجة "' + streamId + '"?\n\nسيتم:\n- قتل العملية الخاصة بهذه المعالجة فقط\n- حذف ملفات PID والسجلات المتعلقة\n\n⚠️ سيتم التأثير فقط على معالجات هذا المشروع')) {
     return;
   }
   
   try {
     // إظهار حالة التحميل
-    const row = document.querySelector(`tr:has(button[onclick*="'${streamId}'"])`);
+    const row = document.querySelector('tr:has(button[onclick*="\'' + streamId + '\'"])');
     if (row) {
       row.style.transition = 'opacity 0.3s';
       row.style.opacity = '0.5';
@@ -675,8 +652,8 @@ async function killAndDeleteStream(streamId) {
     const result = await response.json();
     
     if (response.ok) {
-      alert(`✅ تم قتل وحذف المعالجة "${streamId}" بنجاح\\n\\nملاحظة: تم التأثير فقط على معالجات هذا المشروع`);
-      document.getElementById('out').textContent = `✅ تم قتل وحذف المعالجة "${streamId}" بنجاح\\n\\nملاحظة: ${result.note || 'تم التأثير فقط على معالجات هذا المشروع'}\\n${JSON.stringify(result, null, 2)}`;
+      alert('✅ تم قتل وحذف المعالجة "' + streamId + '" بنجاح\n\nملاحظة: تم التأثير فقط على معالجات هذا المشروع');
+      document.getElementById('out').textContent = '✅ تم قتل وحذف المعالجة "' + streamId + '" بنجاح\n\nملاحظة: ' + (result.note || 'تم التأثير فقط على معالجات هذا المشروع') + '\n' + JSON.stringify(result, null, 2);
       
       // إخفاء الصف من الجدول مع أنيميشن
       if (row) {
@@ -690,22 +667,22 @@ async function killAndDeleteStream(streamId) {
         setTimeout(refreshStreamsTable, 500);
       }
     } else {
-      alert(`❌ خطأ في حذف المعالجة: ${result.error || 'Unknown error'}`);
-      document.getElementById('out').textContent = `❌ خطأ في حذف المعالجة: ${result.error || 'Unknown error'}`;
+      alert('❌ خطأ في حذف المعالجة: ' + (result.error || 'Unknown error'));
+      document.getElementById('out').textContent = '❌ خطأ في حذف المعالجة: ' + (result.error || 'Unknown error');
       if (row) {
         row.style.opacity = '1';
       }
       setTimeout(refreshStreamsTable, 500);
     }
   } catch (error) {
-    alert(`❌ خطأ: ${error.message}`);
-    document.getElementById('out').textContent = `❌ خطأ: ${error.message}`;
+    alert('❌ خطأ: ' + error.message);
+    document.getElementById('out').textContent = '❌ خطأ: ' + error.message;
     setTimeout(refreshStreamsTable, 500);
   }
 }
 
 async function cleanupStream(streamId) {
-  if (!confirm(`هل أنت متأكد من حذف المعالجة العالقة "${streamId}"?\\nسيتم قتل العملية وحذف الملفات المتعلقة.\\n\\n⚠️ سيتم التأثير فقط على معالجات هذا المشروع`)) {
+  if (!confirm('هل أنت متأكد من حذف المعالجة العالقة "' + streamId + '"?\nسيتم قتل العملية وحذف الملفات المتعلقة.\n\n⚠️ سيتم التأثير فقط على معالجات هذا المشروع')) {
     return;
   }
   
@@ -723,11 +700,11 @@ async function cleanupStream(streamId) {
     const result = await response.json();
     
     if (response.ok) {
-      alert(`✅ تم تنظيف المعالجة العالقة "${streamId}" بنجاح`);
-      document.getElementById('out').textContent = `✅ تم تنظيف وحذف المعالجة "${streamId}"\\n\\nملاحظة: ${result.note || 'تم التأثير فقط على معالجات هذا المشروع'}\\n${JSON.stringify(result, null, 2)}`;
+      alert('✅ تم تنظيف المعالجة العالقة "' + streamId + '" بنجاح');
+      document.getElementById('out').textContent = '✅ تم تنظيف وحذف المعالجة "' + streamId + '"\n\nملاحظة: ' + (result.note || 'تم التأثير فقط على معالجات هذا المشروع') + '\n' + JSON.stringify(result, null, 2);
       
       // إخفاء الصف من الجدول مع أنيميشن
-      const row = document.querySelector(`tr:has(button[onclick*="'${streamId}'"])`);
+      const row = document.querySelector('tr:has(button[onclick*="\'' + streamId + '\'"])');
       if (row) {
         row.style.transition = 'opacity 0.3s';
         row.style.opacity = '0';
@@ -739,12 +716,12 @@ async function cleanupStream(streamId) {
         setTimeout(refreshStreamsTable, 500);
       }
     } else {
-      alert(`❌ خطأ في تنظيف المعالجة: ${result.error || 'Unknown error'}`);
-      document.getElementById('out').textContent = `❌ خطأ في تنظيف المعالجة: ${result.error || 'Unknown error'}`;
+      alert('❌ خطأ في تنظيف المعالجة: ' + (result.error || 'Unknown error'));
+      document.getElementById('out').textContent = '❌ خطأ في تنظيف المعالجة: ' + (result.error || 'Unknown error');
     }
   } catch (error) {
-    alert(`❌ خطأ: ${error.message}`);
-    document.getElementById('out').textContent = `❌ خطأ: ${error.message}`;
+    alert('❌ خطأ: ' + error.message);
+    document.getElementById('out').textContent = '❌ خطأ: ' + error.message;
   }
 }
 
@@ -796,14 +773,14 @@ async function saveSettings() {
     if (response.ok) {
       // إظهار رسالة تأكيد
       alert('✅ تم حفظ الإعدادات بنجاح!');
-      document.getElementById('out').textContent = `✅ الإعدادات تم حفظها بنجاح\\n${JSON.stringify(result, null, 2)}`;
+      document.getElementById('out').textContent = '✅ الإعدادات تم حفظها بنجاح\n' + JSON.stringify(result, null, 2);
     } else {
       alert('❌ خطأ في حفظ الإعدادات: ' + (result.error || 'Unknown error'));
-      document.getElementById('out').textContent = `❌ خطأ في حفظ الإعدادات: ${result.error || 'Unknown error'}`;
+      document.getElementById('out').textContent = '❌ خطأ في حفظ الإعدادات: ' + (result.error || 'Unknown error');
     }
   } catch (error) {
     alert('❌ خطأ: ' + error.message);
-    document.getElementById('out').textContent = `❌ خطأ: ${error.message}`;
+    document.getElementById('out').textContent = '❌ خطأ: ' + error.message;
   }
 }
 
@@ -866,11 +843,11 @@ async function loadSettings() {
       }, 100);
       
       if (loadedCount > 0) {
-        const message = `✅ تم تحميل الإعدادات المحفوظة (${loadedCount} حقول)`;
+        const message = '✅ تم تحميل الإعدادات المحفوظة (' + loadedCount + ' حقول)';
         console.log(message);
         document.getElementById('out').textContent = message;
       } else {
-        const message = `ℹ️ تم تحميل الإعدادات لكن جميع الحقول فارغة`;
+        const message = 'ℹ️ تم تحميل الإعدادات لكن جميع الحقول فارغة';
         console.log(message);
         document.getElementById('out').textContent = message;
       }
@@ -885,7 +862,7 @@ async function loadSettings() {
       }, 100);
     } else {
       console.log('Unexpected response:', result);
-      document.getElementById('out').textContent = `⚠️ استجابة غير متوقعة: ${JSON.stringify(result)}`;
+      document.getElementById('out').textContent = '⚠️ استجابة غير متوقعة: ' + JSON.stringify(result);
       // محاولة توليد الأمر على أي حال
       setTimeout(() => {
         generateFFmpegCommand();
@@ -893,7 +870,7 @@ async function loadSettings() {
     }
   } catch (error) {
     console.error('Error loading settings:', error);
-    document.getElementById('out').textContent = `⚠️ خطأ في تحميل الإعدادات: ${error.message}`;
+    document.getElementById('out').textContent = '⚠️ خطأ في تحميل الإعدادات: ' + error.message;
     // محاولة توليد الأمر على أي حال
     setTimeout(() => {
       generateFFmpegCommand();
@@ -967,7 +944,7 @@ async function apiCall(endpoint, method, payload = null) {
   try {
     const response = await fetch(endpoint, options);
     const text = await response.text();
-    let output = `Status: ${response.status} ${response.statusText}\\n\\n`;
+    let output = 'Status: ' + response.status + ' ' + response.statusText + '\n\n';
     
     try {
       const json = JSON.parse(text);
@@ -978,7 +955,7 @@ async function apiCall(endpoint, method, payload = null) {
     
     document.getElementById('out').textContent = output;
   } catch (error) {
-    document.getElementById('out').textContent = `Error: ${error.message}`;
+    document.getElementById('out').textContent = 'Error: ' + error.message;
   }
 }
 
@@ -1176,7 +1153,7 @@ async function stop() {
 
 async function status() {
   const id = document.getElementById('id').value;
-  await apiCall(`/status?id=${encodeURIComponent(id)}`, 'GET');
+  await apiCall('/status?id=' + encodeURIComponent(id), 'GET');
 }
 
 async function listStreams() {
@@ -1185,7 +1162,7 @@ async function listStreams() {
 
 async function viewLogs() {
   const id = document.getElementById('id').value;
-  await apiCall(`/logs?id=${encodeURIComponent(id)}&lines=200`, 'GET');
+  await apiCall('/logs?id=' + encodeURIComponent(id) + '&lines=200', 'GET');
 }
 </script>
 </body>
