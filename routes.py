@@ -718,6 +718,7 @@ async function refreshStreamsTable() {{
           const statusText = stream.running ? 'Running' : 'Stopped';
           const uptime = stream.uptime_seconds ? formatUptime(stream.uptime_seconds) : 'N/A';
           const logSize = formatSize(stream.log_size || 0);
+          const streamId = stream.id;
           
           return `
             <tr>
@@ -729,8 +730,8 @@ async function refreshStreamsTable() {{
               <td>
                 <div class="action-buttons">
                   ${{stream.running ? 
-                    `<button onclick="stopStream('${{{{stream.id}}}}')" style="background: #ff3b30;">Stop</button><button onclick="viewStreamLogs('${{{{stream.id}}}}')">Logs</button>` : 
-                    `<button onclick="cleanupStream('${{{{stream.id}}}}')" style="background: #666;">Cleanup</button>`
+                    `<button onclick="stopStream('` + streamId + `')" style="background: #ff3b30;">Stop</button><button onclick="viewStreamLogs('` + streamId + `')">Logs</button>` : 
+                    `<button onclick="cleanupStream('` + streamId + `')" style="background: #666;">Cleanup</button>`
                   }}
                 </div>
               </td>
