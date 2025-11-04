@@ -29,6 +29,14 @@ AUDIO_CODEC = "aac"
 AUDIO_SAMPLE_RATE = "44100"
 AUDIO_BITRATE = "128k"
 
+# Overlay Image Configuration
+# Default overlay image path (can be overridden via API)
+OVERLAY_IMAGE_DEFAULT = os.getenv("OVERLAY_IMAGE", "overlay_straem.png")
+# Get absolute path if relative path is provided
+if not pathlib.Path(OVERLAY_IMAGE_DEFAULT).is_absolute():
+    PROJECT_DIR = pathlib.Path(__file__).parent.absolute()
+    OVERLAY_IMAGE_DEFAULT = str(PROJECT_DIR / OVERLAY_IMAGE_DEFAULT)
+
 # Create necessary directories
 for directory in (PIDS_DIR, LOGS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
