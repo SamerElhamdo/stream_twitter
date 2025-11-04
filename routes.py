@@ -67,11 +67,53 @@ def stop_stream():
         return jsonify({
             "status": "stopped",
             "id": stream_id,
-            "pid": pid
+            "pid": pid,
+            "note": "Only processes managed by this application were affected"
         }), 200
         
     except FileNotFoundError:
         return jsonify({"error": "Stream is not running"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
+@api.route("/kill-and-cleanup", methods=["POST"])
+def kill_and_cleanup_stream():
+    """
+    Kill a specific stream and clean up its files.
+    
+    SAFE: Only kills processes that have PID files in our PIDS_DIR.
+    Does NOT affect other processes on the system.
+    """
+    require_auth()
+    
+    body = request.get_json(force=True) or {}
+    stream_id = body.get("id", "").strip()
+    
+    if not stream_id:
+        return jsonify({"error": "Stream ID is required"}), 400
+    
+    try:
+        # Try to stop the stream first (this will kill the process if running)
+        killed_pid = None
+        try:
+            killed_pid = stream_manager.stop_stream(stream_id)
+        except FileNotFoundError:
+            # Stream might not be running, but PID file might still exist
+            pass
+        
+        # Clean up any stale PID files for this specific stream
+        cleaned = stream_manager.cleanup_stale_pids()
+        cleaned_for_stream = [c for c in cleaned if c.get("id") == stream_id]
+        
+        return jsonify({
+            "status": "killed_and_cleaned",
+            "id": stream_id,
+            "pid": killed_pid,
+            "cleaned": cleaned_for_stream,
+            "note": "Only processes managed by this application were affected"
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
@@ -795,8 +837,10 @@ async function refreshStreamsTable() {{
               <td>
                 <div class="action-buttons">
                   ${{stream.running ? 
-                    `<button onclick="stopStream('` + streamId + `')" style="background: #ff3b30;">Stop</button><button onclick="viewStreamLogs('` + streamId + `')">Logs</button>` : 
-                    `<button onclick="cleanupStream('` + streamId + `')" style="background: #666;">Cleanup</button>`
+                    `<button onclick="stopStream('` + streamId + `')" style="background: #ff3b30;" title="إيقاف المعالجة">⏹ إيقاف</button>
+                     <button onclick="viewStreamLogs('` + streamId + `')" title="عرض السجلات">📄 سجلات</button>
+                     <button onclick="killAndDeleteStream('` + streamId + `')" style="background: #8e0000;" title="قتل وحذف المعالجة">🗑️ حذف</button>` : 
+                    `<button onclick="cleanupStream('` + streamId + `')" style="background: #666;" title="تنظيف وحذف المعالجة العالقة">🗑️ حذف</button>`
                   }}
                 </div>
               </td>
@@ -828,11 +872,21 @@ async function refreshStreamsTable() {{
 }}
 
 async function stopStream(streamId) {{
-  if (!confirm(`Are you sure you want to stop stream "${{streamId}}"?`)) {{
+  if (!confirm(`هل أنت متأكد من إيقاف المعالجة "${{streamId}}"?`)) {{
     return;
   }}
   
   try {{
+    // إظهار حالة التحميل
+    const row = document.querySelector(`tr:has(button[onclick*="'${{streamId}}'"])`);
+    if (row) {{
+      const statusBadge = row.querySelector('.status-badge');
+      if (statusBadge) {{
+        statusBadge.textContent = 'إيقاف...';
+        statusBadge.style.background = '#ff9500';
+      }}
+    }}
+    
     const response = await fetch('/stop', {{
       method: 'POST',
       headers: {{
@@ -845,14 +899,29 @@ async function stopStream(streamId) {{
     const result = await response.json();
     
     if (response.ok) {{
-      document.getElementById('out').textContent = `Stream "${{streamId}}" stopped successfully\\n${{JSON.stringify(result, null, 2)}}`;
-      // Refresh table after a short delay
-      setTimeout(refreshStreamsTable, 1000);
+      alert(`✅ تم إيقاف المعالجة "${{streamId}}" بنجاح`);
+      document.getElementById('out').textContent = `✅ تم إيقاف المعالجة "${{streamId}}" بنجاح\\n${{JSON.stringify(result, null, 2)}}`;
+      
+      // تحديث الجدول مع أنيميشن
+      if (row) {{
+        row.style.transition = 'background-color 0.3s';
+        row.style.backgroundColor = '#ff3b3020';
+        setTimeout(() => {{
+          refreshStreamsTable();
+        }}, 500);
+      }} else {{
+        setTimeout(refreshStreamsTable, 500);
+      }}
     }} else {{
-      document.getElementById('out').textContent = `Error stopping stream: ${{result.error || 'Unknown error'}}`;
+      alert(`❌ خطأ في إيقاف المعالجة: ${{result.error || 'Unknown error'}}`);
+      document.getElementById('out').textContent = `❌ خطأ في إيقاف المعالجة: ${{result.error || 'Unknown error'}}`;
+      // إعادة تحديث الجدول لإزالة حالة التحميل
+      setTimeout(refreshStreamsTable, 500);
     }}
   }} catch (error) {{
-    document.getElementById('out').textContent = `Error: ${{error.message}}`;
+    alert(`❌ خطأ: ${{error.message}}`);
+    document.getElementById('out').textContent = `❌ خطأ: ${{error.message}}`;
+    setTimeout(refreshStreamsTable, 500);
   }}
 }}
 
@@ -861,9 +930,108 @@ async function viewStreamLogs(streamId) {{
   await viewLogs();
 }}
 
+async function killAndDeleteStream(streamId) {{
+  if (!confirm(`⚠️ تحذير: هل أنت متأكد من قتل وحذف المعالجة "${{streamId}}"?\\n\\nسيتم:\\n- قتل العملية الخاصة بهذه المعالجة فقط\\n- حذف ملفات PID والسجلات المتعلقة\\n\\n⚠️ سيتم التأثير فقط على معالجات هذا المشروع`)) {{
+    return;
+  }}
+  
+  try {{
+    // إظهار حالة التحميل
+    const row = document.querySelector(`tr:has(button[onclick*="'${{streamId}}'"])`);
+    if (row) {{
+      row.style.transition = 'opacity 0.3s';
+      row.style.opacity = '0.5';
+      const statusBadge = row.querySelector('.status-badge');
+      if (statusBadge) {{
+        statusBadge.textContent = 'جاري الحذف...';
+        statusBadge.style.background = '#8e0000';
+      }}
+    }}
+    
+    // استخدام endpoint مخصص لقتل وحذف معالجة محددة فقط
+    const response = await fetch('/kill-and-cleanup', {{
+      method: 'POST',
+      headers: {{
+        'Content-Type': 'application/json',
+        'Authorization': authHeader()
+      }},
+      body: JSON.stringify({{ id: streamId }})
+    }});
+    
+    const result = await response.json();
+    
+    if (response.ok) {{
+      alert(`✅ تم قتل وحذف المعالجة "${{streamId}}" بنجاح\\n\\nملاحظة: تم التأثير فقط على معالجات هذا المشروع`);
+      document.getElementById('out').textContent = `✅ تم قتل وحذف المعالجة "${{streamId}}" بنجاح\\n\\nملاحظة: ${{result.note || 'تم التأثير فقط على معالجات هذا المشروع'}}\\n${{JSON.stringify(result, null, 2)}}`;
+      
+      // إخفاء الصف من الجدول مع أنيميشن
+      if (row) {{
+        row.style.transition = 'opacity 0.3s, transform 0.3s';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-100%)';
+        setTimeout(() => {{
+          refreshStreamsTable();
+        }}, 300);
+      }} else {{
+        setTimeout(refreshStreamsTable, 500);
+      }}
+    }} else {{
+      alert(`❌ خطأ في حذف المعالجة: ${{result.error || 'Unknown error'}}`);
+      document.getElementById('out').textContent = `❌ خطأ في حذف المعالجة: ${{result.error || 'Unknown error'}}`;
+      if (row) {{
+        row.style.opacity = '1';
+      }}
+      setTimeout(refreshStreamsTable, 500);
+    }}
+  }} catch (error) {{
+    alert(`❌ خطأ: ${{error.message}}`);
+    document.getElementById('out').textContent = `❌ خطأ: ${{error.message}}`;
+    setTimeout(refreshStreamsTable, 500);
+  }}
+}}
+
 async function cleanupStream(streamId) {{
-  // This would remove stale PID file - for now just refresh
-  refreshStreamsTable();
+  if (!confirm(`هل أنت متأكد من حذف المعالجة العالقة "${{streamId}}"?\\nسيتم قتل العملية وحذف الملفات المتعلقة.\\n\\n⚠️ سيتم التأثير فقط على معالجات هذا المشروع`)) {{
+    return;
+  }}
+  
+  try {{
+    // استخدام endpoint مخصص لقتل وحذف معالجة محددة فقط
+    const response = await fetch('/kill-and-cleanup', {{
+      method: 'POST',
+      headers: {{
+        'Content-Type': 'application/json',
+        'Authorization': authHeader()
+      }},
+      body: JSON.stringify({{ id: streamId }})
+    }});
+    
+    const result = await response.json();
+    
+    if (response.ok) {{
+      alert(`✅ تم تنظيف المعالجة العالقة "${{streamId}}" بنجاح`);
+      document.getElementById('out').textContent = `✅ تم تنظيف وحذف المعالجة "${{streamId}}"\\n\\nملاحظة: ${{result.note || 'تم التأثير فقط على معالجات هذا المشروع'}}\\n${{JSON.stringify(result, null, 2)}}`;
+      
+      // إخفاء الصف من الجدول مع أنيميشن
+      const row = document.querySelector(`tr:has(button[onclick*="'${{streamId}}'"])`);
+      if (row) {{
+        row.style.transition = 'opacity 0.3s';
+        row.style.opacity = '0';
+        setTimeout(() => {{
+          refreshStreamsTable();
+        }}, 300);
+      }} else {{
+        // تحديث الجدول بعد قليل
+        setTimeout(refreshStreamsTable, 500);
+      }}
+    }} else {{
+      alert(`❌ خطأ في تنظيف المعالجة: ${{result.error || 'Unknown error'}}`);
+      document.getElementById('out').textContent = `❌ خطأ في تنظيف المعالجة: ${{result.error || 'Unknown error'}}`;
+    }}
+  }} catch (error) {{
+    alert(`❌ خطأ: ${{error.message}}`);
+    document.getElementById('out').textContent = `❌ خطأ: ${{error.message}}`;
+  }}
 }}
 
 function toggleAutoRefresh() {{
