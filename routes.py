@@ -123,7 +123,13 @@ def get_logs():
 
 @api.route("/cleanup", methods=["POST"])
 def cleanup():
-    """Clean up stale PID files and optionally kill all FFmpeg processes."""
+    """
+    Clean up stale PID files and optionally kill FFmpeg processes.
+    
+    SAFE: Only kills FFmpeg processes that were started by this application
+    (those with PID files in our PIDS_DIR). Does NOT affect other FFmpeg
+    processes running on the system.
+    """
     require_auth()
     
     body = request.get_json(silent=True) or {}
@@ -135,7 +141,8 @@ def cleanup():
         killed = stream_manager.kill_all_ffmpeg()
         return jsonify({
             "cleaned": cleaned,
-            "killed_ffmpeg": killed
+            "killed_ffmpeg": killed,
+            "note": "Only processes managed by this application were killed"
         }), 200
     
     return jsonify({"cleaned": cleaned}), 200
@@ -143,11 +150,19 @@ def cleanup():
 
 @api.route("/stop-all", methods=["POST"])
 def stop_all_streams():
-    """Stop all running streams."""
+    """
+    Stop all running streams managed by this application.
+    
+    SAFE: Only stops streams that have PID files in our PIDS_DIR.
+    Does NOT affect other FFmpeg processes on the system.
+    """
     require_auth()
     
     stopped = stream_manager.stop_all_streams()
-    return jsonify({"stopped": stopped}), 200
+    return jsonify({
+        "stopped": stopped,
+        "note": "Only streams managed by this application were stopped"
+    }), 200
 
 
 @api.route("/m3u/upload", methods=["POST"])

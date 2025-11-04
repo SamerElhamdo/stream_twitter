@@ -359,35 +359,66 @@ class StreamManager:
     
     def kill_all_ffmpeg(self) -> list:
         """
-        Kill all FFmpeg processes owned by the current user.
+        Kill all FFmpeg processes that were started by this application.
+        Only kills processes that have PID files in our PIDS_DIR.
+        
+        WARNING: This does NOT kill all FFmpeg processes on the system,
+        only those managed by this application.
         
         Returns:
-            List of killed process IDs
+            List of killed process IDs with their stream IDs
         """
         killed = []
         
-        try:
-            result = subprocess.run(
-                ["pgrep", "-u", str(os.getuid()), "ffmpeg"],
-                capture_output=True,
-                text=True,
-                check=False
-            )
+        # Only kill processes that we have PID files for
+        for pid_file_path in config.PIDS_DIR.glob("*.pid"):
+            stream_id = pid_file_path.stem
             
-            if result.returncode == 0 and result.stdout.strip():
-                pids = result.stdout.strip().splitlines()
-                for pid_str in pids:
-                    try:
-                        pid = int(pid_str)
-                        os.kill(pid, signal.SIGTERM)
+            try:
+                pid = int(pid_file_path.read_text().strip())
+                
+                # Verify it's actually running
+                if not self.is_running(pid):
+                    continue
+                
+                # Verify it's actually an FFmpeg process by checking command line
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmdline = f.read().decode(errors="ignore")
+                        if "ffmpeg" not in cmdline.lower():
+                            # Not an FFmpeg process, skip it
+                            continue
+                except (OSError, FileNotFoundError):
+                    # Can't verify (might be on different OS), but proceed
+                    pass
+                
+                # Kill the process using process group (same as stop_stream)
+                try:
+                    process_group = os.getpgid(pid)
+                    os.killpg(process_group, signal.SIGTERM)
+                    time.sleep(1.5)
+                    
+                    if self.is_running(pid):
+                        os.killpg(process_group, signal.SIGKILL)
                         time.sleep(0.5)
-                        if self.is_running(pid):
-                            os.kill(pid, signal.SIGKILL)
-                        killed.append(pid)
-                    except (ValueError, ProcessLookupError, OSError):
-                        pass
-        except Exception:
-            pass
+                    
+                    killed.append({
+                        "id": stream_id,
+                        "pid": pid
+                    })
+                    
+                    # Clean up PID file
+                    pid_file_path.unlink(missing_ok=True)
+                    
+                except (ProcessLookupError, OSError):
+                    # Process already terminated
+                    pid_file_path.unlink(missing_ok=True)
+                    pass
+                    
+            except (ValueError, OSError, ProcessLookupError):
+                # Invalid PID file, clean it up
+                pid_file_path.unlink(missing_ok=True)
+                pass
         
         return killed
     
