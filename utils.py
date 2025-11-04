@@ -85,12 +85,19 @@ def validate_stream_request(body: dict) -> tuple:
     if not stream_id:
         stream_id = "stream"
     
-    # Build extra_args if image is provided
-    if image:
+    # Build extra_args only if image is provided AND not empty
+    if image and image.strip():
         extra_args = build_overlay_args(image, overlay_mode, extra_args)
+    elif not image and not extra_args:
+        # إذا كانت الحقول فارغة، تأكد من أن extra_args = None للنسخ المباشر
+        extra_args = None
     
     # Validate extra_args is a list if provided
     if extra_args is not None and not isinstance(extra_args, list):
         return None, None, None, None, "extra_args must be a list"
+    
+    # إذا كانت extra_args قائمة فارغة، اجعلها None للنسخ المباشر
+    if extra_args is not None and len(extra_args) == 0:
+        extra_args = None
     
     return hls, rtmp, stream_id, extra_args, None

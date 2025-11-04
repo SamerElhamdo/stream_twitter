@@ -1477,22 +1477,29 @@ async function start() {{
     rtmp: document.getElementById('rtmp').value,
   }};
   
+  // فقط أضف image إذا كانت غير فارغة
   const image = document.getElementById('image').value.trim();
-  if (image) {{
+  if (image && image !== '') {{
     payload.image = image;
     payload.overlay_mode = 'full';
   }}
   
+  // فقط أضف extra_args إذا كانت غير فارغة
   const extraRaw = document.getElementById('extra').value.trim();
-  if (extraRaw) {{
+  if (extraRaw && extraRaw !== '') {{
     try {{
-      payload.extra_args = JSON.parse(extraRaw);
+      const parsed = JSON.parse(extraRaw);
+      // تأكد من أن القائمة ليست فارغة
+      if (Array.isArray(parsed) && parsed.length > 0) {{
+        payload.extra_args = parsed;
+      }}
     }} catch (e) {{
       alert('extra_args must be valid JSON array');
       return;
     }}
   }}
   
+  // إذا لم تكن هناك image أو extra_args، سيتم النسخ المباشر (copy)
   await apiCall('/start', 'POST', payload);
   // Refresh streams table after starting
   setTimeout(refreshStreamsTable, 1000);
