@@ -507,7 +507,7 @@ def ui():
     <input id="hls" value="http://5.9.243.47:8080/live/wawi/Yyf6Y7gQwC/664.m3u8" placeholder="Input HLS stream URL" />
     
     <label>RTMP URL</label>
-    <input id="rtmp" value="rtmp://live.restream.io/live/re_10661273_event5fdc0f9d1a224a50bb0d78b13c0e953b" placeholder="Output RTMP stream URL" />
+    <input id="rtmp" value="" placeholder="Output RTMP stream URL" />
     
     <label>Image Path (optional)</label>
     <input id="image" value="{config.OVERLAY_IMAGE_DEFAULT}" placeholder="Path to overlay image" />
