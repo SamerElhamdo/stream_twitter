@@ -243,7 +243,7 @@ class StreamManager:
     
     def list_streams(self) -> list:
         """
-        List all streams with their status.
+        List all streams with their detailed status.
         
         Returns:
             List of dictionaries containing stream information
@@ -260,12 +260,42 @@ class StreamManager:
                 pid = None
                 running = False
             
+            log_file_path = self.log_file(stream_id)
+            log_size = 0
+            log_exists = log_file_path.exists()
+            
+            if log_exists:
+                try:
+                    log_size = log_file_path.stat().st_size
+                except OSError:
+                    pass
+            
+            # Get process info if running
+            process_info = {}
+            if running and pid:
+                try:
+                    # Get process start time (if available)
+                    if os.path.exists(f"/proc/{pid}"):
+                        stat_info = os.stat(f"/proc/{pid}")
+                        import time
+                        start_time = stat_info.st_ctime
+                        process_info["start_time"] = start_time
+                        process_info["uptime_seconds"] = int(time.time() - start_time)
+                except (OSError, AttributeError):
+                    pass
+            
             streams.append({
                 "id": stream_id,
                 "pid": pid,
                 "running": running,
-                "log": str(self.log_file(stream_id))
+                "log": str(log_file_path),
+                "log_size": log_size,
+                "log_size_mb": round(log_size / (1024 * 1024), 2) if log_size > 0 else 0,
+                **process_info
             })
+        
+        # Sort by stream_id
+        streams.sort(key=lambda x: x["id"])
         
         return streams
     
