@@ -479,6 +479,9 @@ def check_source():
             from urllib.error import URLError, HTTPError
             import time
             
+            # timeout للتحقق من المصدر (10 ثوان)
+            timeout = 10
+            
             start_time = time.time()
             req = Request(source_url, method='HEAD')
             req.add_header('User-Agent', 'Mozilla/5.0')
