@@ -48,8 +48,10 @@ def build_overlay_args(
         args_str = " ".join(args).lower()
         if "-filter_complex" not in args_str and "overlay" not in args_str:
             # Full screen overlay: scale to fill and center
+            # Note: In FFmpeg filter expressions, commas need to be escaped when passed as shell arguments
+            # But since we're using Python subprocess with list, we use regular commas
             filter_complex = (
-                "[1:v]scale=iw*min(1280/iw\\,720/ih):ih*min(1280/iw\\,720/ih)[scaled];"
+                "[1:v]scale=iw*min(1280/iw,720/ih):ih*min(1280/iw,720/ih)[scaled];"
                 "[0:v][scaled]overlay=(W-w)/2:(H-h)/2:format=auto"
             )
             args.extend(["-filter_complex", filter_complex])
