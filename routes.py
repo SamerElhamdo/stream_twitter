@@ -964,7 +964,7 @@ async function checkSource(url, channelName) {{
       headers: {{
         'Content-Type': 'application/json'
       }},
-      body: JSON.stringify({{ url: url }}),
+      body: JSON.stringify({{{{ url: url }}}}),
       signal: signal
     }});
     
